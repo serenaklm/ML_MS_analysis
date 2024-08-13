@@ -18,6 +18,6 @@ def unzip(folder, new_folder):
         zip_ref.extractall(new_folder)
 
 def smiles_to_mol(smiles):
-    mol = Chem.MolFromSmiles(smiles, kekulize = False)
+    mol = Chem.MolFromSmiles(smiles)
 
     return mol

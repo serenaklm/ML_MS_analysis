@@ -27,3 +27,52 @@ extra_MS_url_list = ["https://zenodo.org/records/11163381/files/20231031_nihnp_l
 main_data_folder = "./data"
 raw_data_folder = os.path.join(main_data_folder, "raw")
 processed_data_folder = os.path.join(main_data_folder, "processed")
+cleaned_data_folder = os.path.join(main_data_folder, "cleaned")
+
+# Get list of adducts to include 
+adducts = ["[M+H]+", "[M+Na]+", "[M+NH4]+", "M+H", "M+Na", "M+NH4", "[M+H]", "[M]+",
+           "[M+H-H2O]+", "M-H2O+H", "M+H-H2O", "[M-H2O+H]+"]
+
+adducts_mapping = {"[M]+" : "[M]+",
+                   "[M+H]+" : "[M+H]+", 
+                   "M+H": "[M+H]+",
+                   "[M+H]": "[M+H]+",
+                   "[M+Na]+": "[M+Na]+",
+                   "M+Na": "[M+Na]+",
+                   "[M+NH4]+": "[M+NH4]+", 
+                   "M+NH4": "[M+NH4]+", 
+                   "[M+H-H2O]+": "[M+H-H2O]+", 
+                   "M-H2O+H": "[M+H-H2O]+", 
+                   "M+H-H2O": "[M+H-H2O]+", 
+                   "[M-H2O+H]+": "[M+H-H2O]+"}
+
+
+instruments_mapping = {'-Maxis HD qTOF': 'ESI-QTOF', 'ESI-QTOF': 'ESI-QTOF', '-Q-Exactive Plus Orbitrap Res 14k': 'ESI-QFT', '-Q-Exactive Plus Orbitrap Res 70k': 'ESI-QFT',
+                       'APCI-Ion Trap': 'APCI-IT', 'APCI-Orbitrap': 'APCI-QFT', 'APCI-QQQ': 'APCI-QQ', 'APCI-qTof': 'APCI-QTOF', 'CI (MeOH)-IT/ion trap': 'CI-IT',
+                       'CI-IT/ion trap': 'CI-IT', 'DI-ESI-Hybrid FT': 'ESI-QFT', 'DI-ESI-Ion Trap': 'ESI-IT', 'DI-ESI-Orbitrap': 'ESI-QFT',
+                       'DI-ESI-Q-Exactive Plus': 'ESI-QFT', 'DI-ESI-QQQ': 'ESI-QQ', 'DI-ESI-qTof': 'ESI-QTOF', 
+                       'DIRECT INFUSION NANOESI-ION TRAP-DIRECT INFUSION NANOESI-ION TRAP': 'ESI-IT', 'ESI or APCI-IT/ion trap': 'ESI-IT',
+                       'APCI-ITFT': 'APCI-ITFT', 'LC-APCI-ITFT': 'APCI-ITFT', 'ESI-APCI-ITFT': 'APCI-ITFT', 'ESI-ESI-FTICR': 'ESI-FT', 'ESI-ESI-ITFT': 'ESI-ITFT', 'ESI-FAB-EBEB': 'FAB-EBEB',
+                       'ESI-Flow-injection QqQ/MS': 'ESI-QQ', 'ESI-HCD': 'ESI-QFT', 'ESI-HPLC-ESI-TOF': 'LC-ESI-TOF', 'ESI-Hybrid FT': 'ESI-QFT',
+                       'ESI-IT-FT/ion trap with FTMS': 'ESI-ITFT', 'ESI-IT/ion trap': 'ESI-IT', 'ESI-Ion Trap': 'ESI-IT', 'ESI-LC-APPI-QQ': 'LC-APPI-QQ',
+                       'LC-ESI-IT': 'LC-ESI-IT', 'ESI-LC-ESI-IT': 'LC-ESI-IT', 'ESI-LC-ESI-ITFT': 'LC-ESI-ITFT', 'LC-ESI-ITFT': 'LC-ESI-ITFT', 'ESI-LC-ESI-ITTOF': 'LC-ESI-ITTOF', 'ESI-LC-ESI-Q': 'LC-ESI-Q',
+                       'LC-ESI-QFT':'LC-ESI-QFT', 'ESI-LC-ESI-QFT': 'LC-ESI-QFT', 'LC-ESI-QQ':'LC-ESI-QQ', 'ESI-LC-ESI-QQ': 'LC-ESI-QQ', 'ESI-LC-ESI-QTOF': 'LC-ESI-QTOF', 'LC-ESI-QTOF': 'LC-ESI-QTOF', 'ESI-LC-Q-TOF/MS': 'LC-ESI-QTOF',
+                       'ESI-Orbitrap': 'ESI-ITFT', 'ESI-Q-TOF': 'ESI-QTOF', 'ESI-QIT': 'ESI-QIT', 'ESI-QQQ': 'ESI-QQ', 'ESI-QqQ': 'ESI-QQ', 'ESI-UPLC-ESI-QTOF': 'LC-ESI-QTOF',
+                       'ESI-qTOF': 'ESI-QTOF', 'ESI-qToF': 'ESI-QTOF', 'ESI-qTof': 'ESI-QTOF', 'FAB-BEqQ/magnetic and electric sectors with quadrupole': 'FAB-BEQQ',
+                       'In-source CID-API': 'ESI-QQ', 'LC-APCI-qTof': 'LC-APCI-QTOF', 'LC-ESI- impact HD': 'LC-ESI-QTOF', 'LC-ESI-CID; Lumos': 'LC-ESI-ITFT',
+                       'LC-ESI-CID; Velos': 'LC-ESI-ITFT', 'LC-ESI-HCD; Lumos': 'LC-ESI-ITFT', 'LC-ESI-HCD; Velos': 'LC-ESI-ITFT', 'LC-ESI-Hybrid FT': 'LC-ESI-QFT',
+                       'LC-ESI-Hybrid Ft': 'LC-ESI-QFT', 'LC-ESI-ITFT-LC-ESI-ITFT': 'LC-ESI-ITFT', 'LC-ESI-ITTOF-LC-ESI-ITTOF': 'LC-ESI-ITTOF', 'LC-ESI-Ion Trap': 'LC-ESI-IT',
+                       'LC-ESI-LCQ': 'LC-ESI-IT', 'LC-ESI-Maxis HD qTOF': 'LC-ESI-QTOF', 'LC-ESI-Maxis II HD Q-TOF Bruker': 'LC-ESI-QTOF', 'LC-ESI-Orbitrap': 'LC-ESI-ITFT',
+                       'LC-ESI-Q-Exactive Plus': 'LC-ESI-QFT', 'LC-ESI-Q-Exactive Plus Orbitrap Res 14k': 'LC-ESI-QFT', 'LC-ESI-Q-Exactive Plus Orbitrap Res 70k': 'LC-ESI-QFT',
+                       'LC-ESI-QQ-LC-ESI-QQ': 'LC-ESI-QQ', 'LC-ESI-QQQ': 'LC-ESI-QQ', 'LC-ESI-QTOF-LC-ESI-QTOF': 'LC-ESI-QTOF', 'LC-ESI-qTOF': 'LC-ESI-QTOF',
+                       'LC-ESI-qToF': 'LC-ESI-QTOF', 'LC-ESI-qTof': 'LC-ESI-QTOF', 'LC-ESIMS-qTOF': 'LC-ESI-ITFT', 'N/A-ESI-QFT': 'ESI-QFT', 'N/A-ESI-QTOF': 'ESI-QTOF',
+                       'N/A-Linear Ion Trap': 'ESI-IT', 'N/A-N/A': 'ESI-QTOF', 'Negative-Quattro_QQQ:10eV': 'ESI-QQ', 'Negative-Quattro_QQQ:25eV': 'ESI-QQ',
+                       'Negative-Quattro_QQQ:40eV': 'ESI-QQ', 'Positive-Quattro_QQQ:10eV': 'ESI-QQ', 'Positive-Quattro_QQQ:25eV': 'ESI-QQ', 'Positive-Quattro_QQQ:40eV': 'ESI-QQ'}
+
+energy_mapping = {"60.0": 60.0, "20.0": 20.0, "30.0": 30.0, "15.0": 15.0, "45.0": 45.0,
+                  "10 eV": 10.0, "15 eV": 15.0, "20.0 eV": 20.0, "20 eV": 20.0, "30 eV": 30.0, "35.0 eV": 35.0, "40 eV": 40.0, "50 eV": 50.0,
+                  "10 ev": 10.0, "20 ev": 20.0, "40 ev": 40.0,
+                  "10eV": 10.0, "20eV": 20.0, "30eV": 30.0, "35eV": 35.0, "40eV": 40.0, "50eV": 50.0,  "55eV": 35.0,  "70eV": 70.0,
+                   "10 V": 10.0, "20 V": 20.0, "30 V": 30.0, "40 V": 40.0, "50 V": 50.0,
+                   "15.0 V": 15.0, "20.0 V": 20.0, "25.0 V": 25.0, "30.0 V": 30.0, "35.0 V": 35.0, "40 V": 40.0, "50 V": 50.0, "70 V": 70.0, "80 V": 80.0}
+
