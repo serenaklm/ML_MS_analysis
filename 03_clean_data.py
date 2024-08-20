@@ -5,9 +5,9 @@
 import os
 import math 
 import logging
+import warnings
+import pandas as pd
 from tqdm import tqdm
-from typing import List
-
 from rdkit import Chem
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 
@@ -20,6 +20,7 @@ from config import *
 from utils import smiles_to_mol, Formula
 
 logger = logging.getLogger("matchms")
+warnings.filterwarnings("ignore")
 
 def keep_pos_spectra(spectrum):
     if spectrum is None:
@@ -62,7 +63,7 @@ def require_formula_match_parent_mass(spectrum, tolerance=0.1):
 
     formula = spectrum.get("formula")
     if formula is None:
-        logger.warning("Removed spectrum since precursor formula is None")
+        print("Removed spectrum since precursor formula is None")
         return None
     formula = Formula(formula)
     if math.isclose(formula.get_mass(), float(spectrum.get("parent_mass")), abs_tol=tolerance):
@@ -107,14 +108,13 @@ def add_precursor_formula(spectrum):
 def require_formula_match_parent_mass(spectrum, tolerance=0.1):
     formula = spectrum.get("formula")
     if formula is None:
-        logger.warning("removed spectrum since precursor formula is None")
         return None
     formula = Formula(formula)
     if math.isclose(formula.get_mass(), float(spectrum.get("parent_mass")), abs_tol=tolerance):
         return spectrum
     else:
-        logger.info(f"formula = {formula}, parent mass {spectrum.get('parent_mass')}, found mass {formula.get_mass()}")
-        logger.info("mass_diff = ", float(spectrum.get("parent_mass")) - formula.get_mass())
+        print(f"formula = {formula}, parent mass {spectrum.get('parent_mass')}, found mass {formula.get_mass()}")
+        print("mass_diff = ", float(spectrum.get("parent_mass")) - formula.get_mass())
     return None
 
 def require_matching_adduct_precursor_mz_parent_mass(spectrum,
@@ -126,13 +126,10 @@ def require_matching_adduct_precursor_mz_parent_mass(spectrum,
     adduct = spectrum.get("adduct")
 
     if adduct is None:
-        logger.info("Spectrum is removed since adduct is None")
         return None
     if spectrum.get("parent_mass") is None:
-        logger.info("Spectrum is removed since parent mass is None")
         return None
     if spectrum.get("precursor_mz") is None:
-        logger.info("Spectrum is removed since precursor mz is None")
         return None
     try:
         precursor_mz = float(spectrum.get("precursor_mz"))
@@ -208,14 +205,14 @@ def harmonize_instrument_types(spectrum, conversions: dict):
         spectrum.set("instrument_type", conversions[instrument_type])
     return spectrum
 
-def keep_energy_spectra(spectrum):
+def clean_energy_spectra(spectrum):
 
     if spectrum is None:
         return None
-    energy = spectrum.get("collision_energy").strip()
-
-    if energy in energy_mapping:
-        spectrum.set("collision_energy", energy_mapping[energy])
+    energy = float(spectrum.get("collision_energy").replace("(max)", "").strip())
+    energy = float(int(float(energy)))
+    if energy != 0.0: 
+        spectrum.set("collision_energy", energy)
         return spectrum
     else:
         return None
@@ -227,14 +224,14 @@ if __name__ == "__main__":
     workflow = create_workflow(query_filters = DEFAULT_FILTERS  + REQUIRE_COMPLETE_ANNOTATION + 
                                                [(msfilters.repair_smiles_of_salts, {"mass_tolerance": 0.1}),
                                                  msfilters.repair_not_matching_annotation, 
-                                                (msfilters.require_minimum_number_of_peaks, {"n_required": 10})])
+                                                (msfilters.require_minimum_number_of_peaks, {"n_required": 5})])
 
     pipeline = Pipeline(workflow)
 
     # Add in extra processing step 
     pipeline.processing_queries.parse_and_add_filter(remove_non_ms2_spectra, filter_position = 0)
     pipeline.processing_queries.parse_and_add_filter(keep_pos_spectra)
-
+    
     pipeline.processing_queries.parse_and_add_filter((require_adduct_in_list, {"allowed_adduct_list": adducts}))
     pipeline.processing_queries.parse_and_add_filter(remove_charged_molecules)
     pipeline.processing_queries.parse_and_add_filter(require_matching_adduct_precursor_mz_parent_mass)
@@ -245,8 +242,18 @@ if __name__ == "__main__":
     pipeline.processing_queries.parse_and_add_filter(add_precursor_formula)
 
     pipeline.processing_queries.parse_and_add_filter((harmonize_instrument_types, {"conversions": instruments_mapping}))
-    pipeline.processing_queries.parse_and_add_filter(keep_energy_spectra)
+    pipeline.processing_queries.parse_and_add_filter(clean_energy_spectra)
 
-    for f in tqdm(os.listdir(processed_data_folder)):
-        pipeline.run(os.path.join(processed_data_folder, f),
-                     cleaned_query_file = os.path.join(cleaned_data_folder, f))
+    filter_order = [filter.__name__ for filter in pipeline.processing_queries.filters]
+
+    all_files = sorted([f for f in os.listdir(processed_data_folder)])
+
+    for f in tqdm(all_files):
+        
+        print(f"Processing {f} now")
+        filename = f.replace(".msp", "")
+        output_report = pipeline.run(os.path.join(processed_data_folder, f),
+                                     cleaned_query_file = os.path.join(cleaned_data_folder, f))
+        
+        output_report = output_report.to_dataframe()
+        output_report.to_csv(os.path.join(cleaned_data_folder, f"{filename}_report.csv"), index = True)

@@ -4,7 +4,7 @@ import os
 mona_url = "https://mona.fiehnlab.ucdavis.edu/rest/downloads/retrieve/873fbe29-4808-46d1-a4a3-a4134ac8c755"
 massbank_url = "https://github.com/MassBank/MassBank-data/releases/download/2024.06/MassBank_NIST.msp"
 
-GNPS_main_url = "https://gnps-external.ucsd.edu/gnpslibrary/"
+GNPS_main_url = "https://external.gnps2.org/gnpslibrary/"
 GNPS_url_list = ['BERKELEY-LAB.mgf', 'BILELIB19.mgf', 'BIRMINGHAM-UHPLC-MS-POS.mgf',
                  'BMDMS-NP.mgf', 'CASMI.mgf', 'DRUGS-OF-ABUSE-LIBRARY.mgf', 'ECG-ACYL-AMIDES-C4-C24-LIBRARY.mgf',
                  'ECG-ACYL-ESTERS-C4-C24-LIBRARY.mgf', 'GNPS-COLLECTIONS-MISC.mgf',
@@ -18,6 +18,8 @@ GNPS_url_list = ['BERKELEY-LAB.mgf', 'BILELIB19.mgf', 'BIRMINGHAM-UHPLC-MS-POS.m
                  'GNPS-SELLECKCHEM-FDA-PART2.mgf', 'HCE-CELL-LYSATE-LIPIDS.mgf', 'HMDB.mgf', 'IQAMDB.mgf', 'LDB_POSITIVE.mgf', 'MIADB.mgf',
                  'MMV_POSITIVE.mgf', 'PNNL-LIPIDS-POSITIVE.mgf', 'PSU-MSMLS.mgf', 'RESPECT.mgf', 'SUMNER.mgf', 'UM-NPDC.mgf']
 
+# GNPS_url_list = ["ALL_GNPS_NO_PROPOGATED.mgf"]
+
 extra_MS_url_list = ["https://zenodo.org/records/11163381/files/20231031_nihnp_library_pos_all_lib_MSn.mgf?download=1",
                      "https://zenodo.org/records/11163381/files/20231130_mcescaf_library_pos_all_lib_MSn.mgf?download=1",
                      "https://zenodo.org/records/11163381/files/20231130_otavapep_library_pos_all_lib_MSn.mgf?download=1",
@@ -28,10 +30,11 @@ main_data_folder = "./data"
 raw_data_folder = os.path.join(main_data_folder, "raw")
 processed_data_folder = os.path.join(main_data_folder, "processed")
 cleaned_data_folder = os.path.join(main_data_folder, "cleaned")
+final_data_folder = os.path.join(main_data_folder, "final")
 
 # Get list of adducts to include 
 adducts = ["[M+H]+", "[M+Na]+", "[M+NH4]+", "M+H", "M+Na", "M+NH4", "[M+H]", "[M]+",
-           "[M+H-H2O]+", "M-H2O+H", "M+H-H2O", "[M-H2O+H]+"]
+           "[M+H-H2O]+", "M-H2O+H", "M+H-H2O", "[M-H2O+H]+", "[M+H-2H2O]+"]
 
 adducts_mapping = {"[M]+" : "[M]+",
                    "[M+H]+" : "[M+H]+", 
@@ -44,8 +47,8 @@ adducts_mapping = {"[M]+" : "[M]+",
                    "[M+H-H2O]+": "[M+H-H2O]+", 
                    "M-H2O+H": "[M+H-H2O]+", 
                    "M+H-H2O": "[M+H-H2O]+", 
-                   "[M-H2O+H]+": "[M+H-H2O]+"}
-
+                   "[M-H2O+H]+": "[M+H-H2O]+", 
+                   "[M+H-2H2O]+": "[M+H-2H2O]+"}
 
 instruments_mapping = {'-Maxis HD qTOF': 'ESI-QTOF', 'ESI-QTOF': 'ESI-QTOF', '-Q-Exactive Plus Orbitrap Res 14k': 'ESI-QFT', '-Q-Exactive Plus Orbitrap Res 70k': 'ESI-QFT',
                        'APCI-Ion Trap': 'APCI-IT', 'APCI-Orbitrap': 'APCI-QFT', 'APCI-QQQ': 'APCI-QQ', 'APCI-qTof': 'APCI-QTOF', 'CI (MeOH)-IT/ion trap': 'CI-IT',
@@ -68,11 +71,3 @@ instruments_mapping = {'-Maxis HD qTOF': 'ESI-QTOF', 'ESI-QTOF': 'ESI-QTOF', '-Q
                        'LC-ESI-qToF': 'LC-ESI-QTOF', 'LC-ESI-qTof': 'LC-ESI-QTOF', 'LC-ESIMS-qTOF': 'LC-ESI-ITFT', 'N/A-ESI-QFT': 'ESI-QFT', 'N/A-ESI-QTOF': 'ESI-QTOF',
                        'N/A-Linear Ion Trap': 'ESI-IT', 'N/A-N/A': 'ESI-QTOF', 'Negative-Quattro_QQQ:10eV': 'ESI-QQ', 'Negative-Quattro_QQQ:25eV': 'ESI-QQ',
                        'Negative-Quattro_QQQ:40eV': 'ESI-QQ', 'Positive-Quattro_QQQ:10eV': 'ESI-QQ', 'Positive-Quattro_QQQ:25eV': 'ESI-QQ', 'Positive-Quattro_QQQ:40eV': 'ESI-QQ'}
-
-energy_mapping = {"60.0": 60.0, "20.0": 20.0, "30.0": 30.0, "15.0": 15.0, "45.0": 45.0,
-                  "10 eV": 10.0, "15 eV": 15.0, "20.0 eV": 20.0, "20 eV": 20.0, "30 eV": 30.0, "35.0 eV": 35.0, "40 eV": 40.0, "50 eV": 50.0,
-                  "10 ev": 10.0, "20 ev": 20.0, "40 ev": 40.0,
-                  "10eV": 10.0, "20eV": 20.0, "30eV": 30.0, "35eV": 35.0, "40eV": 40.0, "50eV": 50.0,  "55eV": 35.0,  "70eV": 70.0,
-                   "10 V": 10.0, "20 V": 20.0, "30 V": 30.0, "40 V": 40.0, "50 V": 50.0,
-                   "15.0 V": 15.0, "20.0 V": 20.0, "25.0 V": 25.0, "30.0 V": 30.0, "35.0 V": 35.0, "40 V": 40.0, "50 V": 50.0, "70 V": 70.0, "80 V": 80.0}
-
