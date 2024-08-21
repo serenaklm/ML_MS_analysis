@@ -26,7 +26,7 @@ extra_MS_url_list = ["https://zenodo.org/records/11163381/files/20231031_nihnp_l
                      "https://zenodo.org/records/11163381/files/20240411_mcebio_library_pos_all_lib_MSn.mgf?download=1"]
 
 # Folders
-main_data_folder = "./data"
+main_data_folder = "../data"
 raw_data_folder = os.path.join(main_data_folder, "raw")
 processed_data_folder = os.path.join(main_data_folder, "processed")
 cleaned_data_folder = os.path.join(main_data_folder, "cleaned")
