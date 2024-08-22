@@ -18,7 +18,7 @@ def assign_new_id(spectrum_list):
     
 if __name__ == "__main__":
 
-    if not os.path.exists(final_data_folder): os.makedirs(final_data_folder)
+    if not os.path.exists(merged_data_folder): os.makedirs(merged_data_folder)
     n_records = {}
     all_spectrum = [] 
 
@@ -32,5 +32,5 @@ if __name__ == "__main__":
         all_spectrum.extend(dataset)
 
     assign_new_id(all_spectrum)
-    save_as_msp(all_spectrum, os.path.join(final_data_folder, "final_MS.msp"))
-    write_json(n_records, os.path.join(final_data_folder, "records_breakdown.json")) 
+    save_as_msp(all_spectrum, os.path.join(merged_data_folder, "merged_MS.msp"))
+    write_json(n_records, os.path.join(merged_data_folder, "records_breakdown.json"))

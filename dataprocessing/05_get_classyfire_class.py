@@ -44,7 +44,7 @@ def add_classes(data, mapping):
 if __name__ == "__main__":
 
     # Get all the MS records 
-    MS = get_all_spectra(os.path.join(final_data_folder, "final_MS.msp"))
+    MS = get_all_spectra(os.path.join(merged_data_folder, "final_MS.msp"))
 
     # Get the unique inchikeys 
     unique_inchikeys = list(set([s.metadata["inchikey"] for s in MS]))
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         inchikey_entities_mapping[rec["inchikey"]] = rec
 
     # Update the MS
-    final_w_classes_folder = os.path.join(main_data_folder, "final_w_classyfire_annotations")
+    final_w_classes_folder = os.path.join(main_data_folder, "data_w_classyfire_annotations")
     if not os.path.exists(final_w_classes_folder): os.makedirs(final_w_classes_folder)
-    MS_sieved = add_classes(MS[:10], inchikey_entities_mapping)
-    save_as_msp(MS_sieved, os.path.join(final_w_classes_folder, "final_MS_w_classyfire_annotations.msp"))
+    MS = add_classes(MS, inchikey_entities_mapping)
+    save_as_msp(MS, os.path.join(final_w_classes_folder, "data_w_classyfire_annotations.msp"))
