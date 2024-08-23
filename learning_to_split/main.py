@@ -19,6 +19,18 @@ def learning_to_split(args: argparse.Namespace,
 
         return_order = ['train_data', 'test_data', 'train_indices', 'test_indices', 'splitter', 'predictor'])
     """
+
+    num_no_improvements = 0
+    best_gap, best_split = -1, None  # The bigger the gap, the better (more challenging) the split.
+
+    # Some sanity check 
+    assert args.train_ratio > 0.0 and args.train_ratio < 1.0, "Training ratio needs to be between 0.0 and 1.0."
+
+    # Initialize the spliiter and the optimizer 
+    splitter = ModelFactory.get_model(args, splitter = True)
+    opt = get_optim(splitter, args)
+
+
     
 
 if __name__ == "__main__":

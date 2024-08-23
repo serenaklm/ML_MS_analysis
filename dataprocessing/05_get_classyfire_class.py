@@ -44,37 +44,37 @@ def add_classes(data, mapping):
 if __name__ == "__main__":
 
     # Get all the MS records 
-    MS = get_all_spectra(os.path.join(merged_data_folder, "final_MS.msp"))
-
-    # Get the unique inchikeys 
-    unique_inchikeys = list(set([s.metadata["inchikey"] for s in MS]))
+    MS = get_all_spectra(os.path.join(merged_data_folder, "merged_MS.msp"))
 
     # Create a temp folder for this
     temp_folder = os.path.join(main_data_folder, "classyfire_annotations")
     if not os.path.exists(temp_folder): os.makedirs(temp_folder)
+    
+    # # Get the unique inchikeys 
+    # unique_inchikeys = list(set([s.metadata["inchikey"] for s in MS]))
 
-    # Get the mappings now
-    if os.path.exists(os.path.join(temp_folder, "inchikey_mapping.json")):
-        print("Loading the inchikey to idx mapping")
-        inchikey_mapping = load_json(os.path.join(temp_folder, "inchikey_mapping.json"))
+    # # Get the mappings now
+    # if os.path.exists(os.path.join(temp_folder, "inchikey_mapping.json")):
+    #     print("Loading the inchikey to idx mapping")
+    #     inchikey_mapping = load_json(os.path.join(temp_folder, "inchikey_mapping.json"))
 
-    else:
-        print("Generating the inchikey to idx mapping")
-        inchikey_mapping = {i : k for i,k in enumerate(unique_inchikeys)}
-        write_json(inchikey_mapping, os.path.join(temp_folder, "inchikey_mapping.json"))
+    # else:
+    #     print("Generating the inchikey to idx mapping")
+    #     inchikey_mapping = {i : k for i,k in enumerate(unique_inchikeys)}
+    #     write_json(inchikey_mapping, os.path.join(temp_folder, "inchikey_mapping.json"))
 
-    # Iterate through this now 
-    for index, key in tqdm(inchikey_mapping.items()):
-        try:
-            current_file_path = os.path.join(temp_folder, f"{index}.json")
-            if os.path.exists(current_file_path): 
-                continue 
-            else:
-                output = get_entity(key)
-                output["inchikey"] = key
-                write_json(output, current_file_path)
-        except:
-            continue
+    # # Iterate through this now 
+    # for index, key in tqdm(inchikey_mapping.items()):
+    #     try:
+    #         current_file_path = os.path.join(temp_folder, f"{index}.json")
+    #         if os.path.exists(current_file_path): 
+    #             continue 
+    #         else:
+    #             output = get_entity(key)
+    #             output["inchikey"] = key
+    #             write_json(output, current_file_path)
+    #     except:
+    #         continue
     
     # Get the mapping now 
     inchikey_entities_mapping = {} 
