@@ -90,12 +90,12 @@ def add_FPs(data, mapping):
         rec.set("morgan4_256", mapping[smiles]["morgan4_256"])
         rec.set("morgan4_1024", mapping[smiles]["morgan4_1024"])
         rec.set("morgan4_2048", mapping[smiles]["morgan4_2048"])
-        rec.set("morgan4_4092", mapping[smiles]["morgan4_4096"])
+        rec.set("morgan4_4096", mapping[smiles]["morgan4_4096"])
 
         rec.set("morgan6_256", mapping[smiles]["morgan6_256"])
         rec.set("morgan6_1024", mapping[smiles]["morgan6_1024"])
         rec.set("morgan6_2048", mapping[smiles]["morgan6_2048"])
-        rec.set("morgan6_4092", mapping[smiles]["morgan6_4096"])
+        rec.set("morgan6_4096", mapping[smiles]["morgan6_4096"])
 
         # Add to list of data 
         data_w_FPs.append(rec)
