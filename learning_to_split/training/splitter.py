@@ -36,7 +36,7 @@ def _train_splitter_single_epoch(splitter, predictor, total_loader, test_loader,
 
         print("okay i am here")
         a = z 
-        
+
 
     #     # Add standard loss to the stats
     #     stats["loss_ratio"].append(loss_ratio_total.item())
@@ -96,13 +96,13 @@ def train_splitter(splitter: nn.Module,
 
     # total_loader samples from the entire dataset
     # We use its samples to enforce the regularity constraints
-    total_loader = get_dataloader(data, batch_size = config_dict["batch_size"],
+    total_loader = get_dataloader(data, False, batch_size = config_dict["batch_size"],
                                   num_workers = config_dict["num_workers"], config_dict= config_dict,
                                   sampler = RandomSampler(data, replacement = True,
                                                           num_samples = config_dict["batch_size"] * config_dict["num_batches"]))
 
     test_data = Subset(data, indices = test_indices)
-    test_loader = get_dataloader(test_data, batch_size = config_dict["batch_size"],
+    test_loader = get_dataloader(test_data, False, batch_size = config_dict["batch_size"],
                                  num_workers = config_dict["num_workers"], config_dict= config_dict,
                                   sampler = RandomSampler(test_data, replacement = True,
                                                           num_samples = config_dict["batch_size"] * config_dict["num_batches"]))

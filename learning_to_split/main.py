@@ -39,16 +39,19 @@ def learning_to_split(config_dict: dict,
         # Get the predictor
         predictor = ModelFactory.get_model(config_dict, predictor = True)
 
-        # Train the splitter now
-        import warnings
-        warnings.warn("Remove training of splitter at this end")
-        train_splitter(splitter, predictor, data, test_indices, opt, args,
-                       verbose = verbose)
-        
         # Step 1: Split the dataset using the Splitter
         # We start with random split for the first iteration
         random_split = True if outer_loop == 0 else False
         split_stats, train_indices, test_indices = split_data(data, splitter, config_dict, random_split) 
+    
+        # Train the splitter now
+        import warnings
+        warnings.warn("Remove training of splitter at this line")
+        train_splitter(splitter, predictor, data, test_indices, opt, config_dict,
+                       verbose = verbose)
+        
+        raise Exception() 
+    
 
         # Step 2: train and test the predictor
         val_score = train_predictor(data = data, train_indices = train_indices,
@@ -84,7 +87,7 @@ def learning_to_split(config_dict: dict,
         if num_no_improvements == args.patience: break
 
         # # Train the splitter now
-        # train_splitter(splitter, predictor, data, test_indices, opt, args,
+        # train_splitter(splitter, predictor, data, test_indices, opt, config_dict,
         #                verbose = verbose)
         
         a = z 

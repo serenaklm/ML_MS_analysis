@@ -43,7 +43,7 @@ def get_dataloader(data, shuffle, batch_size, num_workers, config_dict, sampler 
                             collate_fn = collate_fn_p)
 
     else: 
-        loader = DataLoader(data, shuffle = shuffle,
+        loader = DataLoader(data, 
                             batch_size = batch_size,
                             sampler = sampler,
                             num_workers = num_workers, 
