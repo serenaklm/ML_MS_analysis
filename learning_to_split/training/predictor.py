@@ -43,9 +43,9 @@ def test_predictor(data: Dataset = None,
         
         FP = to_tensor(FP).to(config_dict["device"])
         FP_pred = predictor(mz_binned)
-        jaccard = metric(FP_pred, FP).detach().cpu().item()
+        jaccard_similarity = metric(FP_pred, FP).detach().cpu().item()
 
-        total += jaccard
+        total += jaccard_similarity
         count += 1
         
     return total / count
@@ -70,13 +70,13 @@ def train_predictor(data: Dataset = None,
     train_data, val_data = random_split(train_data, [train_size, val_size])
 
     train_loader = get_dataloader(train_data, False, config_dict["batch_size"], config_dict["num_workers"], 
-                                  config_dict= config_dict,
-                                  sampler = RandomSampler(train_data, replacement=True,
+                                  config_dict = config_dict,
+                                  sampler = RandomSampler(train_data, replacement = True,
                                                           num_samples = config_dict["batch_size"] * config_dict["num_batches"]))
 
     val_loader = get_dataloader(val_data, False, config_dict["batch_size"], config_dict["num_workers"],
-                                config_dict= config_dict,
-                                sampler = RandomSampler(val_data, replacement=True,
+                                config_dict = config_dict,
+                                sampler = RandomSampler(val_data, replacement = True,
                                                         num_samples = config_dict["batch_size"] * config_dict["num_batches"])) 
 
     # Get the optimizer and loss for the predictor
@@ -86,7 +86,7 @@ def train_predictor(data: Dataset = None,
     best_val_score, best_predictor = -1, None
     ep, cycle = 0, 0
 
-    # Get the loss 
+    # Get the loss
     ce_loss = nn.CrossEntropyLoss()
 
     while True:
@@ -104,7 +104,7 @@ def train_predictor(data: Dataset = None,
         val_score = test_predictor(loader = val_loader, 
                                    predictor = predictor, config_dict = config_dict)
 
-        progress_message =  f'train predictor ep {ep}, mean val jaccard similarity {val_score:.2f}'
+        progress_message =  f'Train predictor @ epoch: {ep}, mean val jaccard similarity: {val_score:.2f}'
         print(progress_message, end="\r", flush=True, time=True)
 
         if val_score > best_val_score:

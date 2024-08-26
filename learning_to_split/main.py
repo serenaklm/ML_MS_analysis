@@ -11,6 +11,31 @@ from models.build import ModelFactory
 from dataloader import CustomedDataset
 from training import split_data, train_predictor, test_predictor, train_splitter
 
+def save_data(data, best_split):
+
+    # Train indices, test indices
+    train_indices, test_indices = best_split['train_indices'], best_split['test_indices']
+
+    # Train and test data
+    train_data = Subset(data, indices = best_split['train_indices'])
+    test_data = Subset(data, indices = best_split['test_indices'])
+
+    # Get the weights of the model
+    splitter_weights = best_split["splitter"]
+    predictor_weights = best_split["predictor"]
+
+    # Get splits stats 
+    stats = {str(k):v for k, v in best_split.items() if k not in ["splitter", "predictor"]}
+
+    pickle_data(train_data, os.path.join(args.results_folder, "train.pkl"))
+    pickle_data(test_data, os.path.join(args.results_folder, "test.pkl"))
+    pickle_data(train_indices, os.path.join(args.results_folder, "train_indices.pkl"))
+    pickle_data(test_indices, os.path.join(args.results_folder, "test_indices.pkl"))
+    save_model(splitter_weights, os.path.join(args.results_folder, "splitter.pth"))
+    save_model(predictor_weights, os.path.join(args.results_folder, "predictor.pth"))
+    
+    write_json(stats, os.path.join(args.results_folder, "splits_stats.json"))
+
 def learning_to_split(config_dict: dict,
                       data: Dataset,
                       verbose: bool = True):
@@ -31,7 +56,7 @@ def learning_to_split(config_dict: dict,
 
     # Initialize the spliiter and the optimizer 
     splitter = ModelFactory.get_model(config_dict, splitter = True)
-    opt = get_optim(splitter, config_dict) 
+    opt = get_optim(splitter, config_dict)
 
     # Start training
     for outer_loop in range(config_dict["n_outer_loops"]):
@@ -43,16 +68,14 @@ def learning_to_split(config_dict: dict,
         # We start with random split for the first iteration
         random_split = True if outer_loop == 0 else False
         split_stats, train_indices, test_indices = split_data(data, splitter, config_dict, random_split) 
-    
-        # Train the splitter now
-        import warnings
-        warnings.warn("Remove training of splitter at this line")
+
+
+        # Step 3: Train the splitter based on performance from predictor
+        print("okay here")
         train_splitter(splitter, predictor, data, test_indices, opt, config_dict,
                        verbose = verbose)
+        a = z 
         
-        raise Exception() 
-    
-
         # Step 2: train and test the predictor
         val_score = train_predictor(data = data, train_indices = train_indices,
                                     predictor = predictor, config_dict = config_dict)
@@ -80,20 +103,25 @@ def learning_to_split(config_dict: dict,
                           "best_gap":      best_gap}
             
             # Write the states to a file 
-            write_args(best_split, os.path.join(config_dict["results_folder"], "best_split.json"),
+            write_dict(best_split, os.path.join(config_dict["results_folder"], "best_split.json"),
                        skip = ["splitter", "predictor", "train_indices", "test_indices"])
             
         else: num_no_improvements += 1
         if num_no_improvements == args.patience: break
 
-        # # Train the splitter now
-        # train_splitter(splitter, predictor, data, test_indices, opt, config_dict,
-        #                verbose = verbose)
-        
-        a = z 
+        # Step 3: Train the splitter based on performance from predictor
+        train_splitter(splitter, predictor, data, test_indices, opt, config_dict,
+                       verbose = verbose)
 
-    print("okay done")
+    # Done! 
+    # Print the best split.
+    if verbose:
+        print("Finished!\nBest split:")
+        print_split_status(best_split['outer_loop'], best_split['split_stats'],
+                           best_split['val_score'], best_split['test_score'])
 
+    # Save the relevant records
+    save_data(data, best_split)
 
 if __name__ == "__main__":
 
@@ -102,15 +130,13 @@ if __name__ == "__main__":
 
     # Model parameters 
     parser.add_argument("--model_name", type = str, default = "MLP", help = "Name of model")
-    parser.add_argument("--emb_dim", type = int, default = 1024, help = "Embedding dimension of the tokens (default: 1024)")
-    parser.add_argument("--hidden_dim", type = int, default = 4096, help = "Hidden embedding dimension of the tokens (default: 4096)")
     parser.add_argument("--dropout_rate", type = float, default = 0.2, help = "Dropout rate (default: 0.2)")
     parser.add_argument("--FP_type", type = str, default = "maccs", help = "The type of FP that we are predicting (default: maccs)")
 
     # Training parameters
     parser.add_argument("--n_outer_loops", type = int, default = 100, help = "Maximum number of outer loops epoch")
     parser.add_argument("--batch_size", type = int, default = 64, help = "Batch size")
-    parser.add_argument("--num_batches", type = int, default = 100, help = "Number of batches for each epoch")
+    parser.add_argument("--num_batches", type = int, default = 200, help = "Number of batches for each epoch")
     parser.add_argument("--num_workers", type = int, default = 2, help = "Number of workers to process the data")
     parser.add_argument("--train_ratio", type = float, default = 0.8, help = "Percentage of data allocated for training")
 
@@ -140,7 +166,7 @@ if __name__ == "__main__":
     config_dict["output_dim"] = config_dict["FP_dim_mapping"][args.FP_type]
 
     # Log parameters and run learning to split
-    write_args(args, os.path.join(config_dict["results_folder"], "args.json"), skip = ["device"])
+    write_dict(args.__dict__, os.path.join(config_dict["results_folder"], "args.json"), skip = ["device"])
     data = CustomedDataset(config_dict["data_file_path"])
 
     learning_to_split(config_dict, data)

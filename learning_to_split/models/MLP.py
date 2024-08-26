@@ -18,22 +18,22 @@ class MLP(nn.Module):
         
         super().__init__()
 
-        self.MLP = nn.Sequential(nn.Linear(config_dict["input_dim"], config_dict["emb_dim"]),
+        self.MLP = nn.Sequential(nn.Linear(config_dict["input_dim"], config_dict["MLP_model_dim"]["emb_dim"]),
                                  nn.GELU(),
                                  nn.Dropout(config_dict["dropout_rate"]),
-                                 nn.Linear(config_dict["emb_dim"], config_dict["hidden_dim"]),
+                                 nn.Linear(config_dict["MLP_model_dim"]["emb_dim"], config_dict["MLP_model_dim"]["hidden_dim"]),
                                  nn.GELU(),
                                  nn.Dropout(config_dict["dropout_rate"]),
-                                 nn.Linear(config_dict["hidden_dim"], config_dict["hidden_dim"]),
+                                 nn.Linear(config_dict["MLP_model_dim"]["hidden_dim"], config_dict["MLP_model_dim"]["hidden_dim"]),
                                  nn.GELU(),
                                  nn.Dropout(config_dict["dropout_rate"]),
-                                 nn.Linear(config_dict["hidden_dim"], config_dict["output_dim"]))
+                                 nn.Linear(config_dict["MLP_model_dim"]["hidden_dim"], config_dict["output_dim"]))
         
         self.device = config_dict["device"]
         self.is_splitter = is_splitter
         if self.is_splitter: self.pred_layer = nn.Linear(config_dict["output_dim"], n_classes)
 
-    def forward(self, mz_binned):
+    def forward(self, mz_binned, FP = None):
         
         mz_binned = to_tensor(mz_binned).to(self.device)
         pred = self.MLP(mz_binned)

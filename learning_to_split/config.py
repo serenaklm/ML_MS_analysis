@@ -13,8 +13,12 @@ config_dict = {# Data folder
                                    "morgan6_256": 256,
                                    "morgan6_1024": 1024, 
                                    "morgan6_2048": 2048,
-                                   "morgan6_4096": 4096}, 
-                
+                                   "morgan6_4096": 4096},
+
+                # Get dimensions of the MLP model
+                "MLP_model_dim": {"emb_dim": 1024, 
+                                  "hidden_dim": 4096},
+
                 # Max length of binned MS
                 "max_length" : 1000,
                 

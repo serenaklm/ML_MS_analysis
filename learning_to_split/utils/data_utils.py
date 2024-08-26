@@ -1,5 +1,6 @@
 import math
 import json 
+import pickle
 import numpy as np
 from tqdm import tqdm 
 from matchms.importing import load_from_mgf, load_from_msp
@@ -7,13 +8,27 @@ from matchms.importing import load_from_mgf, load_from_msp
 import torch
 
 # For logging 
-def write_args(args, path, skip = []):
+def write_dict(data_dict, path, skip = []):
 
-    args_dict = args.__dict__
-    args_dict = {k: v for k, v in args_dict.items() if k not in skip}
+    data_dict = {k: v for k, v in data_dict.items() if k not in skip}
     
     with open(path, "w") as f:
-        json.dump(args_dict, f, indent = 4)
+        json.dump(data_dict, f, indent = 4)
+
+def write_json(data, path): 
+    with open(path, "w", encoding = "UTF-8") as f: 
+        json.dump(data, f, indent = 4)
+
+def pickle_data(data, path):
+    with open(path, "wb") as f: 
+        pickle.dump(data, f)
+
+def save_model(model, path):
+    
+    if hasattr(model, "module"):
+        torch.save(model.module.state_dict(), path)
+    else:
+        torch.save(model.state_dict(), path)
 
 # For data loading and processing 
 def get_all_spectra(path):

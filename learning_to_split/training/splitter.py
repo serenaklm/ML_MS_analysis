@@ -1,3 +1,4 @@
+import os
 import warnings
 
 import torch
@@ -6,9 +7,9 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, RandomSampler, Subset
 
 from dataloader import get_dataloader
-from utils import to_tensor, compute_marginal_z_loss, compute_y_given_z_loss, optim_step, print
+from utils import to_tensor, compute_marginal_z_loss, compute_y_given_z_loss, optim_step, print, write_json
 
-def print_splitter_stat(stats, i):
+def print_splitter_stat(stats, i, output_path):
 
     print(f"| splitter ep {i} "
           f"loss {stats['loss']:>6.4f} "
@@ -16,6 +17,8 @@ def print_splitter_stat(stats, i):
           f"ratio {stats['loss_ratio']:>6.4f} "
           f"label {stats['loss_balance']:>6.4f})",
           flush=True)
+
+    write_json(stats, output_path)
     
 def _train_splitter_single_epoch(splitter, predictor, total_loader, test_loader, opt, config_dict):
     
@@ -26,8 +29,9 @@ def _train_splitter_single_epoch(splitter, predictor, total_loader, test_loader,
     stats = {}
     for k in ['loss_ratio', 'loss_balance', 'loss_gap', 'loss']: stats[k] = []
 
-    # Get the loss 
-    ce_loss = nn.CrossEntropyLoss(reduction = "none")
+    # Get the losses
+    cs = nn.CosineSimilarity()
+    ce_loss = nn.CrossEntropyLoss() 
 
     for batch_total, batch_test in zip(total_loader, test_loader):
 
@@ -58,11 +62,13 @@ def _train_splitter_single_epoch(splitter, predictor, total_loader, test_loader,
         with torch.no_grad():
 
             FP_pred_test = predictor(mz_binned_test)
-            loss = ce_loss(FP_pred_test, FP_test)
-            loss = F.sigmoid(loss)
-
-        correct = torch.stack([loss, 1.0 - loss], dim = -1)
-        loss_gap = F.kl_div(logit_test, correct, reduction='batchmean')
+            cs = (cs(FP_pred_test, FP_test) + 1.0) / 2
+            
+        # The higher the cs score, the more it is "correct"
+        # Hence it should be assigned to the train set 
+        correct = torch.stack([1.0 - cs, cs], dim = -1)
+        
+        loss_gap = ce_loss(logit_test, correct)
         stats["loss_gap"].append(loss_gap.item())
 
         # compute overall loss and update the parameters
@@ -149,4 +155,4 @@ def train_splitter(splitter: nn.Module,
     print(" " * (20 + len(progress_message)), end="\r", time=False)
 
     # Print the last status
-    print_splitter_stat(train_stats, ep)
+    print_splitter_stat(train_stats, ep, os.path.join(config_dict["results_folder"], "splitter_stats.json"))
