@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 
+from utils import to_tensor
+
 def compute_marginal_z_loss(mask, tar_ratio, no_grad=False):
 
     '''
@@ -30,25 +32,25 @@ def compute_y_given_z_loss(mask, y, no_grad=False):
       conditional marginal p(y | z=1) need to match p(y | z=0)
     '''
 
-    num_bits = None 
-    print("okay i am here")
-    a = z 
-    
-
+    num_bits = y.shape[-1] 
     y_given_train, y_given_test, y_original = [], [], []
 
-    for i in range(num_classes):
+    for i in range(num_bits):
+        
+        y_1 = (y[:, i] == 1).float()
 
-        y_i = (y == i).float()
+        y_1_given_train = torch.sum(y_1 * mask) / torch.sum(mask) # p(y|z=1)
+        y_1_given_test = torch.sum(y_1 * (1 - mask)) / torch.sum(1 - mask) # p(y|z=0)
+        y_1_original = torch.sum(y_1) / len(y)  # p(y)
 
-        y_given_train.append(torch.sum(y_i * mask) / torch.sum(mask)) # p(y|z=1)
-        y_given_test.append(torch.sum(y_i * (1 - mask)) / torch.sum(1 - mask)) # p(y|z=0)
-        y_original.append(torch.sum(y_i) / len(y))  # p(y)
+        y_given_train.append(torch.stack([y_1_given_train, 1.0 - y_1_given_train])) # assume binary
+        y_given_test.append(torch.stack([y_1_given_test, 1.0 - y_1_given_test]))
+        y_original.append(torch.stack([y_1_original, 1.0 - y_1_original]))
 
     y_given_train = torch.stack(y_given_train)
     y_given_test = torch.stack(y_given_test)
     y_original = torch.stack(y_original).detach()
-
+    
     loss_y_marinal_train =  F.kl_div(torch.log(y_given_train), y_original,
                                      reduction='batchmean')
 

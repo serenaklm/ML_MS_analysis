@@ -36,6 +36,8 @@ class MLP(nn.Module):
     def forward(self, mz_binned):
         
         mz_binned = to_tensor(mz_binned).to(self.device)
-        mz_emb = self.MLP(mz_binned)
+        pred = self.MLP(mz_binned)
 
-        return mz_emb
+        if self.is_splitter: pred = self.pred_layer(pred)
+
+        return pred

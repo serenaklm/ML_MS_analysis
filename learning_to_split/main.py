@@ -122,6 +122,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--w_gap", type = int, default = 1, help = "Weight for the generalization gap loss")
     parser.add_argument("--w_ratio", type = int, default = 1, help = "Weight for the train/test ratio loss")
+    parser.add_argument("--w_balance", type = int, default = 1, help = "Weight for the train/test label ratio loss")
 
     args = parser.parse_args()
 
