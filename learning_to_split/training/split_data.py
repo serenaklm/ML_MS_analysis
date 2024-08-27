@@ -38,16 +38,17 @@ def split_data(data: Dataset = None,
                                      num_workers = config_dict["num_workers"], 
                                      config_dict = config_dict)
         
-        for mz_binned, _ in test_loader:
+        for mz_binned, FP in test_loader:
 
             # Get the probability of being either in the train or the test
             if random_split:
                 prob = torch.ones(len(mz_binned)).unsqueeze(-1)
-
                 prob = torch.cat([prob * (1 - config_dict["train_ratio"]),  # test split prob
                                   prob * config_dict["train_ratio"]], dim = -1)  # train split prob
             else:
-                raise NotImplementedError() 
+                FP = to_tensor(FP).to(config_dict["device"])
+                logits = splitter(mz_binned, FP)
+                prob = F.softmax(logits, dim = -1)
 
             # Sample the binary mask
             sampler = Categorical(prob)

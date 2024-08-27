@@ -68,13 +68,6 @@ def learning_to_split(config_dict: dict,
         # We start with random split for the first iteration
         random_split = True if outer_loop == 0 else False
         split_stats, train_indices, test_indices = split_data(data, splitter, config_dict, random_split) 
-
-
-        # Step 3: Train the splitter based on performance from predictor
-        print("okay here")
-        train_splitter(splitter, predictor, data, test_indices, opt, config_dict,
-                       verbose = verbose)
-        a = z 
         
         # Step 2: train and test the predictor
         val_score = train_predictor(data = data, train_indices = train_indices,
@@ -134,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("--FP_type", type = str, default = "maccs", help = "The type of FP that we are predicting (default: maccs)")
 
     # Training parameters
-    parser.add_argument("--n_outer_loops", type = int, default = 100, help = "Maximum number of outer loops epoch")
+    parser.add_argument("--n_outer_loops", type = int, default = 1, help = "Maximum number of outer loops epoch")
     parser.add_argument("--batch_size", type = int, default = 64, help = "Batch size")
     parser.add_argument("--num_batches", type = int, default = 200, help = "Number of batches for each epoch")
     parser.add_argument("--num_workers", type = int, default = 2, help = "Number of workers to process the data")
@@ -166,7 +159,7 @@ if __name__ == "__main__":
     config_dict["output_dim"] = config_dict["FP_dim_mapping"][args.FP_type]
 
     # Log parameters and run learning to split
-    write_dict(args.__dict__, os.path.join(config_dict["results_folder"], "args.json"), skip = ["device"])
+    write_dict(config_dict, os.path.join(config_dict["results_folder"], "args.json"), skip = ["device"])
     data = CustomedDataset(config_dict["data_file_path"])
 
     learning_to_split(config_dict, data)

@@ -30,7 +30,7 @@ def _train_splitter_single_epoch(splitter, predictor, total_loader, test_loader,
     for k in ['loss_ratio', 'loss_balance', 'loss_gap', 'loss']: stats[k] = []
 
     # Get the losses
-    cs = nn.CosineSimilarity()
+    cs_loss = nn.CosineSimilarity()
     ce_loss = nn.CrossEntropyLoss() 
 
     for batch_total, batch_test in zip(total_loader, test_loader):
@@ -40,7 +40,7 @@ def _train_splitter_single_epoch(splitter, predictor, total_loader, test_loader,
         FP_total = to_tensor(batch_total[1]).to(config_dict["device"])
 
         # Get the predicted logits
-        logit_total = splitter(mz_binned_total)
+        logit_total = splitter(mz_binned_total, FP_total)
         prob_total = F.softmax(logit_total, dim = -1)[:, 1]
 
         # This loss ensures that the training size and testing size are compariable.
@@ -57,12 +57,12 @@ def _train_splitter_single_epoch(splitter, predictor, total_loader, test_loader,
         # We now get the loss labels to train our splitter 
         mz_binned_test = batch_test[0]
         FP_test = to_tensor(batch_test[1]).to(config_dict["device"])
-        logit_test = splitter(mz_binned_test)
+        logit_test = splitter(mz_binned_test, FP_test)
 
         with torch.no_grad():
 
             FP_pred_test = predictor(mz_binned_test)
-            cs = (cs(FP_pred_test, FP_test) + 1.0) / 2
+            cs = (cs_loss(FP_pred_test, FP_test) + 1.0) / 2
             
         # The higher the cs score, the more it is "correct"
         # Hence it should be assigned to the train set 
