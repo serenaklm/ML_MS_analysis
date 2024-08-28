@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from utils import * 
 from config import *
 
@@ -19,11 +20,10 @@ def get_unique_inchikeys_smiles(MS):
 
     for r in tqdm(MS):
 
-        inchikey = MS.metadata["inchikey"]
-        smiles = MS.metadata["smiles"]
+        inchikey = r.metadata["inchikey"]
+        smiles = r.metadata["smiles"]
 
         if inchikey in unique_inchikeys: continue 
-        assert smiles not in unique_smiles
         unique_inchikeys.append(inchikey)
         unique_smiles.append(smiles)
     
@@ -127,16 +127,14 @@ def add_info(data, mapping):
     
 if __name__ == "__main__":
 
-    # Get all the MS records 
+    # Get all the MS records
+    print("Getting all the MS now")
     MS = get_all_spectra(os.path.join(merged_data_folder, "merged_MS.msp"))
 
     # Create a temp folder for this
-    temp_folder = os.path.join(main_data_folder, "classyfire_annotations")
+    temp_folder = os.path.join(main_data_folder, "mol_annotations")
     if not os.path.exists(temp_folder): os.makedirs(temp_folder)
     
-    # Get the unique inchikeys and smiles 
-    unique_inchikeys, unique_smiles = get_unique_inchikeys_smiles(MS)
-
     # Get the mappings now
     if os.path.exists(os.path.join(temp_folder, "inchikey_and_smiles_mapping.json")):
         print("Loading the inchikey to idx mapping")
@@ -144,14 +142,19 @@ if __name__ == "__main__":
 
     else:
         print("Generating the inchikey / smiles to idx mapping")
-        mapping = {i : {"incikey": k, "smiles": unique_smiles[i]} for i,k in enumerate(unique_inchikeys)}
+
+        # Get the unique inchikeys and smiles 
+        unique_inchikeys, unique_smiles = get_unique_inchikeys_smiles(MS)
+        mapping = {i : {"inchikey": k, "smiles": unique_smiles[i]} for i,k in enumerate(unique_inchikeys)}
         write_json(mapping, os.path.join(temp_folder, "inchikey_and_smiles_mapping.json"))
 
     # Iterate through to get information about each unique molecule
     for index, key in tqdm(mapping.items()):
+
         try:
             current_file_path = os.path.join(temp_folder, f"{index}.json")
-            if os.path.exists(current_file_path): 
+            if os.path.exists(current_file_path):
+                print(f"{current_file_path} already exists. Skipping.")
                 continue
             else:
                 info = get_entity(key["inchikey"])
@@ -161,7 +164,10 @@ if __name__ == "__main__":
                 info["inchikey"] = key["inchikey"]
                 info["smiles"] = key["smiles"]
                 write_json(info, current_file_path)
-        except:
+
+                time.sleep(2)
+
+        except Exception as e: 
             continue
     
     # Get the mapping now 
