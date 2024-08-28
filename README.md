@@ -20,4 +20,4 @@ These records were downloaded on 08/10/2024.
 ``04_merge_data.py`` merge the records in all the dataset and assign the dataset name and new id_ to each record. 
 
 ### Get class annotation for each molecule 
-``05_py`
+``05_add_mol_info.py` add in information of the ground truth molecule for each MS. Information include the chemical class and molecular FP

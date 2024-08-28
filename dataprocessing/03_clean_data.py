@@ -252,8 +252,14 @@ if __name__ == "__main__":
         
         print(f"Processing {f} now")
         filename = f.replace(".msp", "")
+        output_file_path = os.path.join(cleaned_data_folder, f)
+
+        if os.path.exists(output_file_path):
+            print(f"{output_file_path} already exists, skipping.")
+            continue 
+
         output_report = pipeline.run(os.path.join(processed_data_folder, f),
-                                     cleaned_query_file = os.path.join(cleaned_data_folder, f))
+                                     cleaned_query_file = output_file_path)
         
         output_report = output_report.to_dataframe()
         output_report.to_csv(os.path.join(cleaned_data_folder, f"{filename}_report.csv"), index = True)
