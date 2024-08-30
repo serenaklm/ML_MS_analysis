@@ -165,7 +165,7 @@ if __name__ == "__main__":
                 info["smiles"] = key["smiles"]
                 write_json(info, current_file_path)
 
-                time.sleep(2)
+                time.sleep(5)
 
         except Exception as e: 
             continue
@@ -181,3 +181,4 @@ if __name__ == "__main__":
     if not os.path.exists(final_data_folder): os.makedirs(final_data_folder)
     MS = add_info(MS, entities_mapping)
     save_as_msp(MS, os.path.join(final_data_folder, "final_data.msp"))
+    
