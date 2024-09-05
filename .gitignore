@@ -2,4 +2,5 @@
 data/*
 LS_results
 */__pycache__
+*/*/__pycache__
 !data/mol_annotations
