@@ -1,6 +1,8 @@
 # Data folders 
 data/*
 LS_results
+__pycache__
 */__pycache__
 */*/__pycache__
+/dataprocessing/utils/__pycache__
 !data/mol_annotations

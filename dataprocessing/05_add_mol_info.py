@@ -157,15 +157,9 @@ if __name__ == "__main__":
     # Iterate through to get information about each unique molecule
     for _ in range(99999):
         
-        # sieved_mapping = load_json(os.path.join("../sieved_mapping.json"))
-        sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
-        write_json(sieved_mapping, os.path.join("../sieved_mapping.json"))
-        a = z
-<<<<<<< Updated upstream
+        sieved_mapping = load_json(os.path.join("../sieved_mapping.json"))
+        # sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
         
-=======
-
->>>>>>> Stashed changes
         for index, key in tqdm(sieved_mapping.items()):
 
             try:
@@ -195,14 +189,7 @@ if __name__ == "__main__":
         rec = load_json(os.path.join(temp_folder, f))
         entities_mapping[rec["inchikey"]] = rec
 
-<<<<<<< Updated upstream
-    # Update the MS
-    if not os.path.exists(final_data_folder): os.makedirs(final_data_folder)
-    MS = add_info(MS, entities_mapping)
-    save_as_msp(MS, os.path.join(final_data_folder, "final_data.msp"))
-=======
     # # Update the MS
     # if not os.path.exists(final_data_folder): os.makedirs(final_data_folder)
     # MS = add_info(MS, entities_mapping)
     # save_as_msp(MS, os.path.join(final_data_folder, "final_data.msp"))
->>>>>>> Stashed changes
