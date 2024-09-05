@@ -1,5 +1,5 @@
 # Data folders 
-data
+data/*
 LS_results
 */__pycache__
 !data/mol_annotations
