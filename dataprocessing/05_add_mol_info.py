@@ -174,8 +174,8 @@ if __name__ == "__main__":
                     info["inchikey"] = key["inchikey"]
                     info["smiles"] = key["smiles"]
                     write_json(info, current_file_path)
-
-                    time.sleep(60)
+                    
+                    time.sleep(15)
 
             except Exception as e:
                 print(e)
