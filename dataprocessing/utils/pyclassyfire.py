@@ -10,7 +10,7 @@ import csv
 import time
 import json
 import rdkit
-
+import random
 import requests
 
 url = "http://classyfire.wishartlab.com"
@@ -97,20 +97,31 @@ def get_entity(inchikey, return_format="json"):
     :param return_format: desired return format. valid types are json, csv or sdf
     :type return_format: str
     :return: query information
-    :rtype: str
+    :rtype: strs
     
     >>> get_entity("ATUOYWHBWRKTHZ-UHFFFAOYSA-N", 'csv')
     >>> get_entity("ATUOYWHBWRKTHZ-UHFFFAOYSA-N", 'json')
     >>> get_entity("ATUOYWHBWRKTHZ-UHFFFAOYSA-N", 'sdf')
     
     """
+    user_agents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15'
+    ]
+
     inchikey = inchikey.replace('InChIKey=', '')
     r = requests.get('%s/entities/%s.%s' % (url, inchikey, return_format),
                      headers={
-                         "Content-Type": "application/%s" % return_format})
+                         "Content-Type": "application/%s" % return_format,
+                         "User-Agent": random.choice(user_agents)})
     r.raise_for_status()
-    return r.text
 
+    return r.text
 
 def get_chemont_node(chemontid):
     """Return data for the TaxNode with ID chemontid.

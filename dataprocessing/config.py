@@ -18,12 +18,12 @@ GNPS_url_list = ['BERKELEY-LAB.mgf', 'BILELIB19.mgf', 'BIRMINGHAM-UHPLC-MS-POS.m
                  'GNPS-SELLECKCHEM-FDA-PART2.mgf', 'HCE-CELL-LYSATE-LIPIDS.mgf', 'HMDB.mgf', 'IQAMDB.mgf', 'LDB_POSITIVE.mgf', 'MIADB.mgf',
                  'MMV_POSITIVE.mgf', 'PNNL-LIPIDS-POSITIVE.mgf', 'PSU-MSMLS.mgf', 'RESPECT.mgf', 'SUMNER.mgf', 'UM-NPDC.mgf']
 
-# GNPS_url_list = ["ALL_GNPS_NO_PROPOGATED.mgf"]
-
 extra_MS_url_list = ["https://zenodo.org/records/11163381/files/20231031_nihnp_library_pos_all_lib_MSn.mgf?download=1",
                      "https://zenodo.org/records/11163381/files/20231130_mcescaf_library_pos_all_lib_MSn.mgf?download=1",
                      "https://zenodo.org/records/11163381/files/20231130_otavapep_library_pos_all_lib_MSn.mgf?download=1",
                      "https://zenodo.org/records/11163381/files/20240411_mcebio_library_pos_all_lib_MSn.mgf?download=1"]
+
+pubchem_url = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/CURRENT-Full/SDF/"
 
 # Folders
 main_data_folder = "../data"
