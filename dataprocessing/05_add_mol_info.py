@@ -124,12 +124,18 @@ def add_info(data, mapping):
         sieved_data.append(rec)
     
     return sieved_data
+
+def check_exists(folder, index):
     
+    current_file_path = os.path.join(folder, f"{index}.json")
+    if os.path.exists(current_file_path): return True 
+    return False
+
 if __name__ == "__main__":
 
-    # Get all the MS records
-    print("Getting all the MS now")
-    MS = get_all_spectra(os.path.join(merged_data_folder, "merged_MS.msp"))
+    # # Get all the MS records
+    # print("Getting all the MS now")
+    # MS = get_all_spectra(os.path.join(merged_data_folder, "merged_MS.msp"))
 
     # Create a temp folder for this
     temp_folder = os.path.join(main_data_folder, "mol_annotations")
@@ -149,26 +155,33 @@ if __name__ == "__main__":
         write_json(mapping, os.path.join(temp_folder, "inchikey_and_smiles_mapping.json"))
 
     # Iterate through to get information about each unique molecule
-    for index, key in tqdm(mapping.items()):
+    for _ in range(99999):
+        
+        sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
+        write_json(sieved_mapping, os.path.join("../sieved_mapping.json"))
+        a = z 
 
-        try:
-            current_file_path = os.path.join(temp_folder, f"{index}.json")
-            if os.path.exists(current_file_path):
-                print(f"{current_file_path} already exists. Skipping.")
+        for index, key in tqdm(sieved_mapping.items()):
+
+            try:
+                current_file_path = os.path.join(temp_folder, f"{index}.json")
+                if os.path.exists(current_file_path):
+                    print(f"{current_file_path} already exists. Skipping.")
+                    continue
+                else:
+                    info = get_entity(key["inchikey"])
+                    FPs = get_all_FPs(key["smiles"])
+                    info.update(FPs)
+
+                    info["inchikey"] = key["inchikey"]
+                    info["smiles"] = key["smiles"]
+                    write_json(info, current_file_path)
+
+                    time.sleep(5)
+
+            except Exception as e:
+                print(e)
                 continue
-            else:
-                info = get_entity(key["inchikey"])
-                FPs = get_all_FPs(key["smiles"])
-                info.update(FPs)
-
-                info["inchikey"] = key["inchikey"]
-                info["smiles"] = key["smiles"]
-                write_json(info, current_file_path)
-
-                time.sleep(5)
-
-        except Exception as e: 
-            continue
     
     # Get the mapping now 
     entities_mapping = {} 
@@ -181,4 +194,3 @@ if __name__ == "__main__":
     if not os.path.exists(final_data_folder): os.makedirs(final_data_folder)
     MS = add_info(MS, entities_mapping)
     save_as_msp(MS, os.path.join(final_data_folder, "final_data.msp"))
-    
