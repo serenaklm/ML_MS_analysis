@@ -158,8 +158,6 @@ if __name__ == "__main__":
     for _ in range(99999):
         
         sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
-        write_json(sieved_mapping, os.path.join("../sieved_mapping.json"))
-        a = z 
 
         for index, key in tqdm(sieved_mapping.items()):
 
@@ -177,7 +175,7 @@ if __name__ == "__main__":
                     info["smiles"] = key["smiles"]
                     write_json(info, current_file_path)
 
-                    time.sleep(5)
+                    time.sleep(60)
 
             except Exception as e:
                 print(e)
