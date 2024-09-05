@@ -157,8 +157,8 @@ if __name__ == "__main__":
     # Iterate through to get information about each unique molecule
     for _ in range(99999):
         
-        sieved_mapping = load_json(os.path.join("../sieved_mapping.json"))
-        # sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
+        # sieved_mapping = load_json(os.path.join("../sieved_mapping.json"))
+        sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
         
         for index, key in tqdm(sieved_mapping.items()):
 
@@ -180,6 +180,7 @@ if __name__ == "__main__":
 
             except Exception as e:
                 print(e)
+                time.sleep(15)
                 continue
     
     # Get the mapping now 
