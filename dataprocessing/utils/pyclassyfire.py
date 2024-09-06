@@ -119,7 +119,7 @@ def get_entity(inchikey, return_format="json"):
                      headers={
                          "Content-Type": "application/%s" % return_format,
                          "User-Agent": random.choice(user_agents)})
-    r.raise_for_status()
+    # r.raise_for_status()
 
     return r.text
 
