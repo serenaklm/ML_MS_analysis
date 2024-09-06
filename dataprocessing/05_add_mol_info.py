@@ -155,8 +155,9 @@ if __name__ == "__main__":
 
         if not os.path.exists(sieved_mapping_path):
             sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
-        else: 
-            sieved_mapping = load_json(sieved_mapping_path)
+            write_json(sieved_mapping, sieved_mapping_path)
+        
+        sieved_mapping = load_json(sieved_mapping_path)
        
         for index, key in tqdm(sieved_mapping.items()):
 
