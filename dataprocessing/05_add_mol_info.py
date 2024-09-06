@@ -176,11 +176,11 @@ if __name__ == "__main__":
                     info["smiles"] = key["smiles"]
                     write_json(info, current_file_path)
                     
-                    # time.sleep(5)
+                    time.sleep(5)
 
             except Exception as e:
                 print(e)
-                # time.sleep(5)
+                time.sleep(5)
                 continue
     
     # Get the mapping now 
