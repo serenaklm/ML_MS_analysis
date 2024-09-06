@@ -127,9 +127,9 @@ def check_exists(folder, index):
 
 if __name__ == "__main__":
 
-    # # Get all the MS records
-    # print("Getting all the MS now")
-    # MS = get_all_spectra(os.path.join(merged_data_folder, "merged_MS.msp"))
+    # Get all the MS records
+    print("Getting all the MS now")
+    MS = get_all_spectra(os.path.join(merged_data_folder, "merged_MS.msp"))
 
     # Create a temp folder for this
     temp_folder = os.path.join(main_data_folder, "mol_annotations")
@@ -149,15 +149,16 @@ if __name__ == "__main__":
         write_json(mapping, os.path.join(temp_folder, "inchikey_and_smiles_mapping.json"))
 
     # Iterate through to get information about each unique molecule
+    # Repeated loop for molecules that could not be gathered because of rate limits
     for _ in range(99999):
         
         sieved_mapping_path = os.path.join(temp_folder, "sieved_mapping.json")
-
-        if not os.path.exists(sieved_mapping_path):
-            sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
-            write_json(sieved_mapping, sieved_mapping_path)
-        
+        sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
+        write_json(sieved_mapping, sieved_mapping_path)
         sieved_mapping = load_json(sieved_mapping_path)
+        if len(sieved_mapping) == 0: 
+            print("There are no more molecules to be mapped. Ending.")
+            break
        
         for index, key in tqdm(sieved_mapping.items()):
 
@@ -194,13 +195,15 @@ if __name__ == "__main__":
                 continue
     
     # Get the mapping now 
+    print("Labelling MS now")
     entities_mapping = {} 
     for f in os.listdir(temp_folder):
         if f == "inchikey_and_smiles_mapping.json": continue
+        if f == "sieved_mapping.json": continue
         rec = load_json(os.path.join(temp_folder, f))
         entities_mapping[rec["inchikey"]] = rec
 
-    # # Update the MS
-    # if not os.path.exists(final_data_folder): os.makedirs(final_data_folder)
-    # MS = add_info(MS, entities_mapping)
-    # save_as_msp(MS, os.path.join(final_data_folder, "final_data.msp"))
+    # Update the MS
+    if not os.path.exists(final_data_folder): os.makedirs(final_data_folder)
+    MS = add_info(MS, entities_mapping)
+    save_as_msp(MS, os.path.join(final_data_folder, "final_data.msp"))
