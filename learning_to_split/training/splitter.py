@@ -125,7 +125,7 @@ def train_splitter(splitter: nn.Module,
         cur_loss = train_stats["loss"]
 
         if len(loss_list) == 5:
-            if cur_loss > sum(loss_list) / 5.0 - config_dict['convergence_thres']:
+            if cur_loss > sum(loss_list) / 5.0 - config_dict['convergence_threshold']:
                 # break if the avg loss in the past 5 iters doesn't improve beyond a defined threshold
                 break
 

@@ -127,9 +127,9 @@ if __name__ == "__main__":
     parser.add_argument("--FP_type", type = str, default = "maccs", help = "The type of FP that we are predicting (default: maccs)")
 
     # Training parameters
-    parser.add_argument("--n_outer_loops", type = int, default = 1, help = "Maximum number of outer loops epoch")
+    parser.add_argument("--n_outer_loops", type = int, default = 500, help = "Maximum number of outer loops epoch")
     parser.add_argument("--batch_size", type = int, default = 64, help = "Batch size")
-    parser.add_argument("--num_batches", type = int, default = 200, help = "Number of batches for each epoch")
+    parser.add_argument("--num_batches", type = int, default = 300, help = "Number of batches for each epoch")
     parser.add_argument("--num_workers", type = int, default = 2, help = "Number of workers to process the data")
     parser.add_argument("--train_ratio", type = float, default = 0.8, help = "Percentage of data allocated for training")
 
