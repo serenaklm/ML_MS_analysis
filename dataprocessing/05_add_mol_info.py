@@ -97,17 +97,11 @@ def parse_output(output):
 
     for t in tax_fields: 
         if t in output.keys():
-            values[t] = output[t]["name"]
-    
+            try:
+                values[t] = output[t]["name"]
+            except: 
+                values[t] = None
     return values
-
-def get_entity(inchikey):
-
-    output = client.get_entity(inchikey, 'json')
-    output = json.loads(output)
-    output = parse_output(output)
-
-    return output
 
 def add_info(data, mapping):
 
@@ -157,18 +151,32 @@ if __name__ == "__main__":
     # Iterate through to get information about each unique molecule
     for _ in range(99999):
         
-        # sieved_mapping = load_json(os.path.join("../sieved_mapping.json"))
-        sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
-        
+        sieved_mapping_path = os.path.join(temp_folder, "sieved_mapping.json")
+
+        if not os.path.exists(sieved_mapping_path):
+            sieved_mapping = {index: key for index, key in mapping.items() if not check_exists(temp_folder, index)}
+        else: 
+            sieved_mapping = load_json(sieved_mapping_path)
+       
         for index, key in tqdm(sieved_mapping.items()):
 
             try:
+
                 current_file_path = os.path.join(temp_folder, f"{index}.json")
+
                 if os.path.exists(current_file_path):
                     print(f"{current_file_path} already exists. Skipping.")
                     continue
+
                 else:
-                    info = get_entity(key["inchikey"])
+
+                    response = client.get_entity(key["inchikey"], 'json')
+                    if response.status_code == 429: 
+                        print("Error code 429. Skipping.")
+                        continue
+
+                    output = json.loads(response.text)
+                    info = parse_output(output)
                     FPs = get_all_FPs(key["smiles"])
                     info.update(FPs)
 
@@ -181,6 +189,7 @@ if __name__ == "__main__":
             except Exception as e:
                 print(e)
                 time.sleep(1)
+
                 continue
     
     # Get the mapping now 
