@@ -251,7 +251,7 @@ def process_GNPS_comment(comment, mode):
         found, add_marker = False, True
         regex_output = re.findall("CollisionEnergy:(.+) ", comment)
         if len(regex_output) == 0:
-            regex_output = re.findall("[_-]([^-_]+)\s*eV", comment)
+            regex_output = re.findall(r"[_-]([^-_]+)\s*eV", comment)
             add_marker = False
             found = len(regex_output) != 0
         
