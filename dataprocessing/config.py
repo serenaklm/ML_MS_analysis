@@ -32,6 +32,7 @@ processed_data_folder = os.path.join(main_data_folder, "processed")
 cleaned_data_folder = os.path.join(main_data_folder, "cleaned")
 merged_data_folder = os.path.join(main_data_folder, "merged")
 final_data_folder = os.path.join(main_data_folder, "final")
+plots_folder = os.path.join(main_data_folder, "plots")
 
 # Get list of adducts to include 
 adducts = ["[M+H]+", "[M+Na]+", "[M+NH4]+", "M+H", "M+Na", "M+NH4", "[M+H]", "[M]+",

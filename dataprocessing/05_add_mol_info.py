@@ -130,6 +130,7 @@ if __name__ == "__main__":
     # Get all the MS records
     print("Getting all the MS now")
     MS = get_all_spectra(os.path.join(merged_data_folder, "merged_MS.msp"))
+    print(f"There are {len(MS)} MS.")
 
     # Create a temp folder for this
     temp_folder = os.path.join(main_data_folder, "mol_annotations")
@@ -206,4 +207,6 @@ if __name__ == "__main__":
     # Update the MS
     if not os.path.exists(final_data_folder): os.makedirs(final_data_folder)
     MS = add_info(MS, entities_mapping)
-    save_as_msp(MS, os.path.join(final_data_folder, "final_data.msp"))
+    output_path = os.path.join(final_data_folder, "final_data.msp")
+    if os.path.exists(output_path): os.remove(output_path)
+    save_as_msp(MS, output_path)
