@@ -1,0 +1,83 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.12.2
+    cli_version: 0.17.9
+    framework: huggingface
+    huggingface_version: 4.44.2
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1726090631
+    t:
+      1:
+      - 1
+      - 11
+      - 49
+      - 55
+      2:
+      - 1
+      - 11
+      - 49
+      - 55
+      3:
+      - 17
+      - 23
+      - 37
+      4: 3.12.2
+      5: 0.17.9
+      6: 4.44.2
+      8:
+      - 5
+      13: linux-x86_64
+data_file_path:
+  desc: null
+  value: ../data/final/final_data.msp
+main_results_folder:
+  desc: null
+  value: ../results
+FP_pred_results_folder:
+  desc: null
+  value: ../FP_prediction_results
+FP_dim_mapping:
+  desc: null
+  value:
+    maccs: 167
+    morgan4_256: 256
+    morgan4_1024: 1024
+    morgan4_2048: 2048
+    morgan4_4096: 4096
+    morgan6_256: 256
+    morgan6_1024: 1024
+    morgan6_2048: 2048
+    morgan6_4096: 4096
+MLP_model_dim:
+  desc: null
+  value:
+    emb_dim: 1024
+    hidden_dim: 4096
+max_mass:
+  desc: null
+  value: 1000
+granularity:
+  desc: null
+  value: 0.1
+seed:
+  desc: null
+  value: 17
+train_ratio:
+  desc: null
+  value: 0.8
+class_threshold:
+  desc: null
+  value: 0.5
+input_dim:
+  desc: null
+  value: 10000
+results_folder:
+  desc: null
+  value: ../results/../FP_prediction_results/MLP_11-09-2024-17-37
+device:
+  desc: null
+  value: cuda

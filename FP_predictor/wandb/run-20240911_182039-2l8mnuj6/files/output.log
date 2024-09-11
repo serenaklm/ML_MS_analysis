@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/main.py", line 240, in <module>
+    mp.spawn(main, args = (config_dict, run),
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/torch/multiprocessing/spawn.py", line 282, in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/torch/multiprocessing/spawn.py", line 238, in start_processes
+    while not context.join():
+              ^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/torch/multiprocessing/spawn.py", line 118, in join
+    ready = multiprocessing.connection.wait(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/multiprocessing/connection.py", line 1135, in wait
+    ready = selector.select(timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/selectors.py", line 415, in select
+    fd_event_list = self._selector.poll(timeout)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

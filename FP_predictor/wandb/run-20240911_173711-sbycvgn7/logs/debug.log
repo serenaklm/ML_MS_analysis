@@ -1,0 +1,27 @@
+2024-09-11 17:37:11,475 INFO    MainThread:2751055 [wandb_setup.py:_flush():77] Current SDK version is 0.17.9
+2024-09-11 17:37:11,475 INFO    MainThread:2751055 [wandb_setup.py:_flush():77] Configure stats pid to 2751055
+2024-09-11 17:37:11,475 INFO    MainThread:2751055 [wandb_setup.py:_flush():77] Loading settings from /afs/csail.mit.edu/u/k/klingmin/.config/wandb/settings
+2024-09-11 17:37:11,476 INFO    MainThread:2751055 [wandb_setup.py:_flush():77] Loading settings from /data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/wandb/settings
+2024-09-11 17:37:11,476 INFO    MainThread:2751055 [wandb_setup.py:_flush():77] Loading settings from environment variables: {}
+2024-09-11 17:37:11,476 INFO    MainThread:2751055 [wandb_setup.py:_flush():77] Applying setup settings: {'_disable_service': False}
+2024-09-11 17:37:11,476 INFO    MainThread:2751055 [wandb_setup.py:_flush():77] Inferring run settings from compute environment: {'program_relpath': 'FP_predictor/main.py', 'program_abspath': '/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/main.py', 'program': '/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/main.py'}
+2024-09-11 17:37:11,476 INFO    MainThread:2751055 [wandb_setup.py:_flush():77] Applying login settings: {}
+2024-09-11 17:37:11,476 INFO    MainThread:2751055 [wandb_init.py:_log_setup():524] Logging user logs to /data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/wandb/run-20240911_173711-sbycvgn7/logs/debug.log
+2024-09-11 17:37:11,476 INFO    MainThread:2751055 [wandb_init.py:_log_setup():525] Logging internal logs to /data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/wandb/run-20240911_173711-sbycvgn7/logs/debug-internal.log
+2024-09-11 17:37:11,477 INFO    MainThread:2751055 [wandb_init.py:init():608] calling init triggers
+2024-09-11 17:37:11,477 INFO    MainThread:2751055 [wandb_init.py:init():615] wandb.init called with sweep_config: {}
+config: {}
+2024-09-11 17:37:11,477 INFO    MainThread:2751055 [wandb_init.py:init():658] starting backend
+2024-09-11 17:37:11,477 INFO    MainThread:2751055 [wandb_init.py:init():662] setting up manager
+2024-09-11 17:37:11,483 INFO    MainThread:2751055 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2024-09-11 17:37:11,488 INFO    MainThread:2751055 [wandb_init.py:init():670] backend started and connected
+2024-09-11 17:37:11,501 INFO    MainThread:2751055 [wandb_init.py:init():768] updated telemetry
+2024-09-11 17:37:11,527 INFO    MainThread:2751055 [wandb_init.py:init():801] communicating run to backend with 90.0 second timeout
+2024-09-11 17:37:11,813 INFO    MainThread:2751055 [wandb_init.py:init():852] starting run threads in backend
+2024-09-11 17:37:28,496 INFO    MainThread:2751055 [wandb_run.py:_console_start():2465] atexit reg
+2024-09-11 17:37:28,496 INFO    MainThread:2751055 [wandb_run.py:_redirect():2311] redirect: wrap_raw
+2024-09-11 17:37:28,497 INFO    MainThread:2751055 [wandb_run.py:_redirect():2376] Wrapping output streams.
+2024-09-11 17:37:28,497 INFO    MainThread:2751055 [wandb_run.py:_redirect():2401] Redirects installed.
+2024-09-11 17:37:28,503 INFO    MainThread:2751055 [wandb_init.py:init():895] run started, returning control to user process
+2024-09-11 17:37:28,505 INFO    MainThread:2751055 [wandb_run.py:_config_callback():1392] config_cb None None {'data_file_path': '../data/final/final_data.msp', 'main_results_folder': '../results', 'FP_pred_results_folder': '../FP_prediction_results', 'FP_dim_mapping': {'maccs': 167, 'morgan4_256': 256, 'morgan4_1024': 1024, 'morgan4_2048': 2048, 'morgan4_4096': 4096, 'morgan6_256': 256, 'morgan6_1024': 1024, 'morgan6_2048': 2048, 'morgan6_4096': 4096}, 'MLP_model_dim': {'emb_dim': 1024, 'hidden_dim': 4096}, 'max_mass': 1000, 'granularity': 0.1, 'seed': 17, 'train_ratio': 0.8, 'class_threshold': 0.5, 'input_dim': 10000, 'results_folder': '../results/../FP_prediction_results/MLP_11-09-2024-17-37', 'device': 'cuda'}
+2024-09-11 17:38:25,485 WARNING MsgRouterThr:2751055 [router.py:message_loop():77] message_loop has been closed

@@ -1,0 +1,39 @@
+Traceback (most recent call last):
+  File "/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/main.py", line 242, in <module>
+    join = True)
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/torch/multiprocessing/spawn.py", line 282, in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/torch/multiprocessing/spawn.py", line 238, in start_processes
+    while not context.join():
+              ^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/torch/multiprocessing/spawn.py", line 189, in join
+    raise ProcessRaisedException(msg, error_index, failed_process.pid)
+torch.multiprocessing.spawn.ProcessRaisedException:
+
+-- Process 0 terminated with the following error:
+Traceback (most recent call last):
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/torch/multiprocessing/spawn.py", line 76, in _wrap
+    fn(i, *args)
+  File "/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/main.py", line 185, in main
+    best_f_score = best_f_score,
+  File "/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_predictor/main.py", line 92, in log_performance
+    if rank == 0: run.log({f"Training loss": current_loss})
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/wandb/sdk/wandb_run.py", line 453, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/wandb/sdk/wandb_run.py", line 404, in wrapper_fn
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/wandb/sdk/wandb_run.py", line 392, in wrapper
+    raise e
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/wandb/sdk/wandb_run.py", line 387, in wrapper
+    wandb._attach(run=self)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/wandb/sdk/wandb_init.py", line 956, in _attach
+    run._init()
+  File "/data/rbg/users/klingmin/anaconda3/envs/chem/lib/python3.12/site-packages/wandb/sdk/wandb_run.py", line 618, in _init
+    self._config._set_settings(self._settings)
+                               ^^^^^^^^^^^^^^
+AttributeError: 'Run' object has no attribute '_settings'. Did you mean: 'settings'?
