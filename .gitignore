@@ -1,5 +1,7 @@
 # Data folders 
 data/*
+FP_prediction_results/*
+*/wandb/*
 LS_results
 __pycache__
 */__pycache__
