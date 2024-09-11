@@ -112,6 +112,10 @@ def add_info(data, mapping):
         if rec.metadata["inchikey"] not in mapping: continue 
         classes = mapping[rec.metadata["inchikey"]]
         classes = {k: v for k, v in classes.items() if v != "inchikey"}
+        if classes["superclass"] is None: 
+            print("Super class not available. Skipping.")
+            continue
+
         for c, v in classes.items():
             if c is None: continue 
             rec.set(c, v)
