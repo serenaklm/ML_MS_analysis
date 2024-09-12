@@ -1,7 +1,7 @@
 config_dict = {# Data folders
                "data_file_path" : "../data/final/final_data.msp",
                "main_results_folder": "../results",
-               "FP_pred_results_folder" : "../FP_prediction_results",                  
+               "FP_pred_results_folder" : "FP_prediction_results",                  
                
                # Get the mapping of output dimension to the FP that we are predicting
                "FP_dim_mapping" : {"maccs": 167,

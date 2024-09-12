@@ -88,14 +88,15 @@ def log_performance(rank, model, run, dataloader, get_predictions,
                     current_loss, best_loss, best_f_score,
                     global_step, config_dict):
 
-    # Logging
-    # if rank == 0: run.log({f"Training loss": current_loss})
-    
     model_output_folder = os.path.join(config_dict["results_folder"], "models")
     logging_output_folder = os.path.join(config_dict["results_folder"], "messages")
-
-    if not os.path.exists(model_output_folder): os.makedirs(model_output_folder)
-    if not os.path.exists(logging_output_folder): os.makedirs(logging_output_folder)
+    
+    # Logging
+    if rank == 0: 
+        
+        run.log({f"Training loss": current_loss})
+        if not os.path.exists(model_output_folder): os.makedirs(model_output_folder)
+        if not os.path.exists(logging_output_folder): os.makedirs(logging_output_folder)
 
     # Evaluate
     if global_step % config_dict["eval_iter"] == 0:
@@ -127,10 +128,17 @@ def log_performance(rank, model, run, dataloader, get_predictions,
 
     return best_loss, best_f_score
 
-def main(rank, config_dict, run):
+def main(rank, config_dict):
     
     # setup the process groups
     setup(rank, config_dict["world_size"])
+
+    # Set up wandb on process 0 
+    run = None
+    if rank == 0: 
+        run = wandb.init(project = "FP_predictor")
+        run.name = "{}_{}".format(config_dict["model_name"], datetime.now().strftime("%d-%m-%Y-%H-%M"))
+        run.config.update(config_dict)
 
     # Get the model
     model = ModelFactory.get_model(config_dict, predictor = True)
@@ -185,6 +193,7 @@ def main(rank, config_dict, run):
                                                         best_f_score = best_f_score,
                                                         global_step = global_step)
 
+    if rank == 0: run.finish()
     cleanup()
 
 if __name__ == "__main__":
@@ -228,17 +237,10 @@ if __name__ == "__main__":
     # Log parameters and run main function
     write_dict(config_dict, os.path.join(config_dict["results_folder"], "args.json"), skip = ["device"])
 
-    # Set up wandb
-    run = wandb.init(project = "FP_predictor")
-    run.name = "{}_{}".format(args.model_name, datetime.now().strftime("%d-%m-%Y-%H-%M"))
-    run.config.update(config_dict)
-
     world_size = torch.cuda.device_count()
     args.world_size = world_size
     config_dict.update(args.__dict__)
 
-    mp.spawn(main, args = (config_dict, run),
+    mp.spawn(main, args = (config_dict,),
                    nprocs = world_size,
                    join = True)
-    
-    run.finish()
