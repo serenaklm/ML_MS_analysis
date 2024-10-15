@@ -3,5 +3,4 @@ __pycache__
 data/*
 results/*
 */wandb
-
 !data/mol_annotations

@@ -22,5 +22,5 @@ These records were downloaded on 08/10/2024.
 ### Get class annotation for each molecule 
 ``05_add_mol_info.py`` add in information of the ground truth molecule for each MS. Information include the chemical class and molecular FP
 
-### To-do: 
-[] Add logger to print in console
+### To-do:
+[ ] Add logger to print in console

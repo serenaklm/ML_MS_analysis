@@ -1,6 +1,7 @@
 import os
 import wandb
 import random
+import logging
 import argparse
 import numpy as np
 from datetime import datetime
@@ -128,7 +129,7 @@ def log_performance(rank, model, run, dataloader, get_predictions,
 
     return best_loss, best_f_score
 
-def main(rank, config_dict):
+def main(rank, config_dict, logger):
     
     # setup the process groups
     setup(rank, config_dict["world_size"])
@@ -186,6 +187,10 @@ def main(rank, config_dict):
             # Update the progress bar
             loss = loss.item()
             global_step += 1
+            if rank == 0: 
+                msg = f"Epoch {epoch}, global step: {global_step}, loss: {loss}"
+                print(msg)
+                logger.info(msg)
 
             # Logging 
             best_loss, best_f_score = log_performance_p(rank = rank, current_loss = loss, 
@@ -207,8 +212,8 @@ if __name__ == "__main__":
     parser.add_argument("--FP_type", type = str, default = "maccs", help = "The type of FP that we are predicting (default: maccs)")
 
     # Training parameters
-    parser.add_argument("--n_epochs", type = int, default = 500, help = "Number of training epochs")
-    parser.add_argument("--batch_size", type = int, default = 64, help = "Batch size")
+    parser.add_argument("--n_epochs", type = int, default = 1000, help = "Number of training epochs")
+    parser.add_argument("--batch_size", type = int, default = 512, help = "Batch size")
     parser.add_argument("--num_workers", type = int, default = 2, help = "Number of workers to process the data")
 
     parser.add_argument("--lr", type = float, default = 1e-4, help = "Learning rate (default: 1e-4)")
@@ -236,11 +241,14 @@ if __name__ == "__main__":
 
     # Log parameters and run main function
     write_dict(config_dict, os.path.join(config_dict["results_folder"], "args.json"), skip = ["device"])
+    
+    # Setup logging
+    logger = logging.getLogger("FP_predictor")
 
     world_size = torch.cuda.device_count()
     args.world_size = world_size
     config_dict.update(args.__dict__)
 
-    mp.spawn(main, args = (config_dict,),
+    mp.spawn(main, args = (config_dict, logger),
                    nprocs = world_size,
                    join = True)
