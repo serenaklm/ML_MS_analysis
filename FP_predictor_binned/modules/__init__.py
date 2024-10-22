@@ -1,0 +1,1 @@
+from .MS_binned_model import MSBinnedModel
