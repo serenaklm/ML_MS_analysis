@@ -1,4 +1,5 @@
-project: FP_prediction
+project: FP_prediction_binned
+seed: 17
 
 data:
   dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
@@ -6,7 +7,7 @@ data:
   num_workers: 2
   bin_resolution: 1.0
   max_da: 1000
-  FP_type: "morgan4_256"
+  FP_type: "maccs"
 
 model:
   train_params:
@@ -24,7 +25,7 @@ model:
     include_instrument_idx: False
 
 trainer:
-  max_epochs: 1000
+  max_epochs: 10
   devices: 4
   accelerator: "gpu"
   log_every_n_steps: 50

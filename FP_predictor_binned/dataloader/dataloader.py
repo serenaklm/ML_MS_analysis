@@ -28,7 +28,7 @@ class BinnedMSDataset(pl.LightningDataModule):
                        pin_memory: bool = True,
                        max_da: int = 1000,
                        bin_resolution: float = 0.01, 
-                       FP_type: str = "morgan",):
+                       FP_type: str = "morgan"):
         
         super().__init__()
 

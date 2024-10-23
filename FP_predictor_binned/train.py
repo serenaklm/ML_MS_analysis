@@ -1,11 +1,13 @@
 import os
 import copy
 import yaml
+import shutil
 import argparse
 from datetime import datetime
 
 import torch
 import pytorch_lightning as pl
+from pytorch_lightning import seed_everything
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -16,13 +18,7 @@ from dataloader import BinnedMSDataset
 from modules import MSBinnedModel
 
 @rank_zero_only
-def write_config(wandb_logger, config):
-    
-    run_out_dir = wandb_logger.experiment.dir
-    config_out_path = os.path.join(run_out_dir, "run.yaml")
-    with open(config_out_path, "w") as f:
-        yaml.dump(config, f)
-
+def write_config(wandb_logger):
     wandb_logger.experiment.save("run.yaml", policy = "now")
 
 def update_config(config):
@@ -65,7 +61,10 @@ def update_config(config):
 
     return config
 
-def train(config):
+def train(config):  
+
+    # Set a random seed 
+    seed_everything(config["seed"])
 
     # Get the wandb logger 
     wandb_logger = None 
@@ -75,12 +74,10 @@ def train(config):
                                    config = config,
                                    group = config["args"]["config_file"].replace(".yaml", ""),
                                    entity = config["args"]["user"],
-                                   log_model=False)
+                                   log_model = False)
         
         # Dump config
-        original_config = copy.deepcopy(config)
-        del original_config["args"]
-        write_config(wandb_logger, original_config)
+        write_config(wandb_logger)
 
     # Get dataset
     dataset = BinnedMSDataset(**config["data"])
@@ -92,11 +89,54 @@ def train(config):
     trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback])
 
     # Get the model 
-    model = MSBinnedModel(**config["model"]["binned_MS_encoder"], lr = config["train_params"]["lr"], 
-                                                                  weight_decay = config["train_params"]["weight_decay"])
+    model = MSBinnedModel(**config["model"]["binned_MS_encoder"], lr = config["model"]["train_params"]["lr"], 
+                                                           weight_decay = config["model"]["train_params"]["weight_decay"])
 
     # Train 
     trainer.fit(model, datamodule = dataset)
+
+@rank_zero_only
+def clean_up_results(config):
+    
+    def get_model_weights_file(results_folder, expt_type):
+
+        # Some hackish way of doing things; revisit
+        results_folder = os.path.join(results_folder, expt_type)
+        expt_id = [f for f in os.listdir(results_folder)][0]
+        results_folder = os.path.join(results_folder, expt_id, "checkpoints")
+        filename = [f for f in os.listdir(results_folder)][0]
+        filepath = os.path.join(results_folder, filename)
+
+        return filepath 
+
+    # Get the model checkpoints
+    expt_type = config["project"]
+    output_dir = config["args"]["output_dir"]
+    model_filepath = get_model_weights_file(output_dir, expt_type)
+
+    # Get the results dir 
+    results_dir = config["args"]["results_dir"]
+    if not os.path.exists(results_dir): os.makedirs(results_dir)
+
+    expt_settings = "FP-" + config["data"]["FP_type"] + "_maxda-" + str(config["data"]["max_da"]) + "_binreso-" + str(config["data"]["bin_resolution"])
+    current_output_dir = os.path.join(results_dir, expt_settings)
+    if not os.path.exists(current_output_dir): os.makedirs(current_output_dir)
+
+    current_time = datetime.now().strftime("%m-%d-%Y-%H-%M")
+    current_output_dir = os.path.join(current_output_dir, current_time)
+    if not os.path.exists(current_output_dir): os.makedirs(current_output_dir)
+   
+    # Write the config
+    config_out_path = os.path.join(current_output_dir, "run.yaml")
+    original_config = read_config(os.path.join(config["args"]["config_dir"], config["args"]["config_file"]))
+
+    with open(config_out_path, "w") as f:
+        yaml.dump(original_config, f)
+
+    shutil.move(model_filepath, os.path.join(current_output_dir, "model.ckpt"))
+
+    # Remove the cache
+    if os.path.exists(output_dir): shutil.rmtree(output_dir)
 
 if __name__ == "__main__":
 
@@ -104,7 +144,8 @@ if __name__ == "__main__":
     parser.add_argument("--config_dir", type = str, default = "./all_configs", help = "Config directory")
     parser.add_argument("--config_file", type = str, default = "base_config.yaml", help = "Config file")
     parser.add_argument("--torch_hub_cache", type = str, default = "./cache", help = "Torch hub cache directory")
-    parser.add_argument("--output_dir", type = str, default = "./results", help = "Results output directory")
+    parser.add_argument("--output_dir", type = str, default = "./results_cache", help = "Results cache output directory")
+    parser.add_argument("--results_dir", type = str, default = "./results", help = "Results output directory")
     parser.add_argument("--debug", action = "store_true", default = False, help = "Set debug mode")
     parser.add_argument("--disable_checkpoint", action = "store_true", default = False, help = "Disable checkpointing")
     parser.add_argument("--wandb", action = "store_true", help = "Enable wandb logging")
@@ -120,14 +161,13 @@ if __name__ == "__main__":
     if "data" not in config: raise ValueError("Missing required key: data")
     if "model" not in config: raise ValueError("Missing required key: model")
     if "trainer" not in config: raise ValueError("Missing required key: trainer")
-    config["args"] = args.__dict__
 
     # Update the trainer config
+    config["args"] = args.__dict__
     config = update_config(config)
-
-    # Create output directory
-    current_time = datetime.now().strftime("%m-%d-%Y-%H-%M")
-    args.output_dir = os.path.join(args.output_dir, current_time)
 
     # Run the trainer now 
     train(config)
+
+    # Clean up the results folder
+    clean_up_results(config)

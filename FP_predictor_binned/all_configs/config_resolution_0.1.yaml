@@ -1,0 +1,30 @@
+project: FP_prediction
+
+data:
+  dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
+  batch_size: 512
+  num_workers: 2
+  bin_resolution: 0.1
+  max_da: 1000
+  FP_type: "morgan4_256"
+
+model:
+  train_params:
+    lr: 0.0004
+    weight_decay: 0.1
+
+  binned_MS_encoder:
+    n_unique_adducts: 10
+    n_unique_instrument_types: 26
+    model_dim: 512
+    hidden_dim: 2048
+    output_dim: 1024
+    dropout_rate: 0.15
+    include_adduct_idx: False
+    include_instrument_idx: False
+
+trainer:
+  max_epochs: 1000
+  devices: 4
+  accelerator: "gpu"
+  log_every_n_steps: 50

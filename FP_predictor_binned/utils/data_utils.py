@@ -1,17 +1,18 @@
 import math
 import copy 
-import json 
 import yaml
+import json
 import pickle
-import numpy as np
 from tqdm import tqdm 
 from matchms.importing import load_from_mgf, load_from_msp
-
-import torch
 
 def load_pickle(path):
     with open(path, "rb") as f:
         return pickle.load(f)
+
+def pickle_data(data, path):
+    with open(path, "wb") as f:
+        pickle.dump(data, f)
 
 def read_config(path):
 
@@ -31,7 +32,7 @@ def get_all_spectra(path):
 
     for _, spectrum in tqdm(enumerate(spectrum_generator)):
         spectra_list.append(spectrum)
-        # if _ == 50: break 
+        if _ == 100: break 
 
     return spectra_list
 

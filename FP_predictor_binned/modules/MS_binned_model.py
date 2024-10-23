@@ -12,7 +12,7 @@ class MSBinnedModel(pl.LightningModule):
                        weight_decay: float = 0.10, 
                        n_unique_adducts: int = 10, 
                        n_unique_instrument_types: int = 26,
-                       input_dim: int = 2014,
+                       input_dim: int = 888,
                        model_dim: int = 512,
                        hidden_dim: int = 2048,
                        output_dim: int = 1024,
@@ -130,7 +130,6 @@ class MSBinnedModel(pl.LightningModule):
 
     def configure_optimizers(self):
        
-       optimizer = torch.optim.Adam(self.parameters(), lr = self.lr)
+       optimizer = torch.optim.Adam(self.parameters(), lr = self.lr, weight_decay = self.weight_decay)
 
        return optimizer
-    
