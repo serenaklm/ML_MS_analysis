@@ -1,6 +1,6 @@
 import os
-import copy
 import yaml
+import copy
 import shutil
 import argparse
 from datetime import datetime
@@ -18,8 +18,14 @@ from dataloader import BinnedMSDataset
 from modules import MSBinnedModel
 
 @rank_zero_only
-def write_config(wandb_logger):
-    wandb_logger.experiment.save("run.yaml", policy = "now")
+def write_config(wandb_logger, config):
+
+    # Dump raw config now
+    run_out_dir = wandb_logger.experiment.dir
+    config_out_path = os.path.join(run_out_dir, "run.yaml")
+    with open(config_out_path, "w") as f:
+        yaml.dump(config, f)
+    wandb_logger.experiment.save("run.yaml", policy="now")
 
 def update_config(config):
     
@@ -77,8 +83,10 @@ def train(config):
                                    log_model = False)
         
         # Dump config
-        write_config(wandb_logger)
-
+        raw_config = copy.deepcopy(config)
+        del raw_config["args"]
+        write_config(wandb_logger, raw_config)
+        
     # Get dataset
     dataset = BinnedMSDataset(**config["data"])
     dataset.prepare_data()
@@ -90,7 +98,7 @@ def train(config):
 
     # Get the model 
     model = MSBinnedModel(**config["model"]["binned_MS_encoder"], lr = config["model"]["train_params"]["lr"], 
-                                                           weight_decay = config["model"]["train_params"]["weight_decay"])
+                                                                  weight_decay = config["model"]["train_params"]["weight_decay"])
 
     # Train 
     trainer.fit(model, datamodule = dataset)

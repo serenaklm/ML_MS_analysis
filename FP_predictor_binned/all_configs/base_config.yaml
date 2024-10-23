@@ -25,7 +25,7 @@ model:
     include_instrument_idx: False
 
 trainer:
-  max_epochs: 10
+  max_epochs: 200
   devices: 4
   accelerator: "gpu"
   log_every_n_steps: 50

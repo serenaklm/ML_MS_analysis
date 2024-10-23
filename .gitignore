@@ -1,6 +1,6 @@
 LS_results
 __pycache__
 data/*
-results*
+results/*
 */wandb
-!data/mol_annotations
+learning_to_split____

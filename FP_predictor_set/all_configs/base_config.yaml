@@ -1,8 +1,9 @@
 project: FP_prediction_set
+seed: 17 
 
 data:
   dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
-  batch_size: 8
+  batch_size: 128
   num_workers: 2
   bin_resolution: 1.0
   max_da: 1000
@@ -26,7 +27,7 @@ model:
     dropout_rate: 0.2
 
 trainer:
-  max_epochs: 1000
+  max_epochs: 200
   devices: 4
   accelerator: "gpu"
   log_every_n_steps: 50
