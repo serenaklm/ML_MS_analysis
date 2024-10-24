@@ -28,7 +28,7 @@ def get_all_spectra(path):
 
     for _, spectrum in tqdm(enumerate(spectrum_generator)):
         spectra_list.append(spectrum)
-        if _ == 50: break 
+        # if _ == 50: break 
 
     return spectra_list
 

@@ -36,6 +36,18 @@ model:
     include_adduct_idx: False
     include_instrument_idx: False
 
+  MSTransformer:
+    n_unique_adducts: 10
+    n_unique_instrument_types: 26
+    n_heads: 4
+    n_layers: 6
+    model_dim: 512
+    hidden_dim: 2048
+    output_dim: 1024
+    dropout_rate: 0.15
+    include_adduct_idx: False
+    include_instrument_idx: False
+
 optimizer:
   name: Adam
   lr: 0.0005

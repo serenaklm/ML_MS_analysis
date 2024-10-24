@@ -97,8 +97,7 @@ def train(config):
     trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback])
 
     # Get the model 
-    model = MSTransformerEncoder(**config["model"]["MS_encoder"], lr = config["model"]["train_params"]["lr"], 
-                                                                  weight_decay = config["model"]["train_params"]["weight_decay"])
+    model = MSTransformerEncoder(**config["model"]["MS_encoder"], lr = config["model"]["train_params"]["lr"])
 
     # Train 
     trainer.fit(model, datamodule = dataset)

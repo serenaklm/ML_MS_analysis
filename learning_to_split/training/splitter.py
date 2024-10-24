@@ -69,6 +69,8 @@ def compute_y_given_z_loss(mask, FP, no_grad = False):
     if not torch.isfinite(loss_p_marginal):
         loss_p_marginal = torch.ones_like(loss_p_marginal)
 
+    loss_p_marginal = torch.where(loss_p_marginal > 1e3, torch.tensor(1.0), loss_p_marginal)
+
     if no_grad:
         loss_p_marginal = loss_p_marginal.item()
 
@@ -99,10 +101,9 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
 
             FP_test = batch_test["FP"]
             FP_pred_test = predictor(batch_test)
-            loss = F.binary_cross_entropy_with_logits(FP_pred_test, FP_test, reduction = "none")
-            loss = loss.mean(dim = -1)
-            score_test = torch.concat([loss[:, None], (1.0 - loss)[:, None]], dim = -1)
-        
+            score = (F.cosine_similarity(FP_test, FP_pred_test) + 1.0) / 2.0 # Higher the score the more "correct" it is
+            score_test = torch.concat([(1.0 - score)[:, None], score[:, None]], dim = -1)
+
         loss_gap = F.cross_entropy(logit_test, score_test) # Move the mistake to the test 
 
         # Get the combined loss 

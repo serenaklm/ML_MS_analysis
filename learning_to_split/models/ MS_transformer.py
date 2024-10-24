@@ -1,10 +1,7 @@
-import numpy as np
-
-import pytorch_lightning as pl
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+from .build import ModelFactory
 
 class LearnableFourierFeatures(nn.Module):
     
@@ -32,16 +29,18 @@ class LearnableFourierFeatures(nn.Module):
         emb = self.MLP(F)
 
         return emb
-
-class MSTransformerEncoder(pl.LightningModule):
     
-    def __init__(self, lr: float = 1e-4,
+@ModelFactory.register("MSTransformer")
+class MSTransformer(nn.Module):
+    
+    def __init__(self, is_splitter: bool = False,
                        n_heads: int = 6,
                        n_layers: int = 12,
                        input_dim: int = 1000,
                        model_dim: int = 256,
                        hidden_dim: int = 4096,
                        output_dim: int = 2048,
+                       FP_dim: int = 256,
                        n_unique_adducts: int = 10,
                        n_unique_instrument_types: int = 30,
                        include_adduct_idx: bool = False,
@@ -49,15 +48,11 @@ class MSTransformerEncoder(pl.LightningModule):
                        dropout_rate: float = 0.2):
         
         super().__init__()
-        self.save_hyperparameters()
-        
+
         # Set some params
+        self.is_splitter = is_splitter 
         self.n_heads = n_heads
         self.n_layers = n_layers
-        self.lr = lr
-        
-        # Get a mean logger 
-        self.avg_loss_train, self.avg_loss_val = [], []
 
         self.mz_encoder = LearnableFourierFeatures(1, model_dim, hidden_dim, model_dim)
         self.intensity_encoder = LearnableFourierFeatures(1, model_dim, hidden_dim, model_dim)
@@ -93,7 +88,20 @@ class MSTransformerEncoder(pl.LightningModule):
                                         nn.GELU(),
                                         nn.Linear(hidden_dim, output_dim))
 
-    def forward(self, mz, intensities, mask, binned_ms, adduct_idx, instrument_idx):
+        if self.is_splitter: 
+            mul += 1 
+            self.FP_MLP = nn.Sequential(nn.Linear(FP_dim, hidden_dim),
+                                              nn.GELU(),
+                                              nn.Dropout(dropout_rate),
+                                              nn.Linear(hidden_dim, model_dim))
+
+    def forward(self, batch):
+
+        # Unpack the batch 
+        mz, intensities, mask = batch["mz"], batch["intensities"], batch["mask"]
+        binned_ms = batch["binned_MS"]
+        adduct_idx, instrument_idx = batch["adduct_idx"], batch["instrument_idx"]
+        FP = batch["FP"]
 
         # Get binned MS emb
         binned_ms_emb = self.binned_ms_encoder(binned_ms)
@@ -113,73 +121,20 @@ class MSTransformerEncoder(pl.LightningModule):
         instrument_type_emb = self.instrument_type_embedding(instrument_idx)
 
         # Merge the features together
-        feats = torch.concat([MS_emb, binned_ms_emb], dim = -1)
+        emb = torch.concat([MS_emb, binned_ms_emb], dim = -1)
         if self.include_adduct_idx:
-            feats = torch.concat([feats, adduct_emb], dim = -1)
+            emb = torch.concat([emb, adduct_emb], dim = -1)
 
         if self.include_adduct_idx:
-            feats = torch.concat([feats, instrument_type_emb], dim = -1)
+            emb = torch.concat([emb, instrument_type_emb], dim = -1)
 
-        FP_pred = self.MLP(feats)
+        # Get the FP emb if splitter 
+        if self.is_splitter:
+            
+            FP = batch["FP"]
+            FP_emb = self.FP_MLP(FP)
+            emb = torch.concat([emb, FP_emb], dim = -1)
+
+        pred = self.MLP(emb)
         
-        return FP_pred
-
-    def compute_loss(self, FP_pred, FP):
-
-        return F.binary_cross_entropy_with_logits(FP_pred, FP)
-    
-    def training_step(self, batch, batch_idx):
-
-        # Unpack the batch 
-        mz, intensities, mask = batch["mz"], batch["intensities"], batch["mask"]
-        binned_ms = batch["binned_MS"]
-        adduct_idx, instrument_idx = batch["adduct_idx"], batch["instrument_idx"]
-        FP = batch["FP"]
-
-        # Forward pass
-        FP_pred = self(mz, intensities, mask, binned_ms, adduct_idx, instrument_idx)
-
-        # Compute the loss 
-        loss = self.compute_loss(FP_pred, FP)
-        self.log("train/loss", loss, prog_bar = True, sync_dist = True)
-
-        # Add to the tracker 
-        self.avg_loss_train.append(loss.item())
-
-        return loss 
-    
-    def validation_step(self, batch, batch_idx):
-
-        # Unpack the batch 
-        mz, intensities, mask = batch["mz"], batch["intensities"], batch["mask"]
-        binned_ms = batch["binned_MS"]
-        adduct_idx, instrument_idx = batch["adduct_idx"], batch["instrument_idx"]
-        FP = batch["FP"]
-
-        # Forward pass
-        FP_pred = self(mz, intensities, mask, binned_ms, adduct_idx, instrument_idx)
-
-        # Compute the loss 
-        loss = self.compute_loss(FP_pred, FP)
-        self.log("val/loss", loss, prog_bar = True, sync_dist = True)
-
-        # Add to the tracker 
-        self.avg_loss_val.append(loss.item())
-
-    def on_validation_epoch_end(self):
-
-        train_avg = np.mean(self.avg_loss_train)
-        val_avg = np.mean(self.avg_loss_val)
-
-        self.log("train/average_loss", train_avg, prog_bar = True, sync_dist = True)
-        self.log("val/average_loss", val_avg, prog_bar = True, sync_dist = True)
-
-        # Reset the tracker 
-        self.avg_loss_train, self.avg_loss_val = [], [] 
-
-    def configure_optimizers(self):
-       
-       optimizer = torch.optim.Adam(self.parameters(), lr = self.lr)
-
-       return optimizer
-    
+        return pred

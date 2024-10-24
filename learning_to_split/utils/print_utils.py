@@ -32,5 +32,5 @@ def print_split_status(outer_loop: int,
           f"{datetime.now().strftime('%H:%M:%S %Y/%m/%d')}"
           f"[/not bold][default]")
 
-    print(f"| generalization gap {val_score-test_score:>5.2f} "
+    print(f"| generalization gap {val_score - test_score:>5.2f} "
           f"(val {val_score:>5.2f}, test {test_score:>5.2f})")

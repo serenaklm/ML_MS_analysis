@@ -1,3 +1,4 @@
+import os
 import copy
 from tqdm import tqdm
 from typing import List 
@@ -28,24 +29,23 @@ def test_predictor(data: Dataset = None,
             test_data = Subset(data, indices = test_indices)
 
         batch_size = config["dataprocessing"]["batch_size"]
-        num_batches = config["dataprocessing"]["num_batches"]
         num_workers = config["dataprocessing"]["num_workers"]
         
         loader = DataLoader(test_data, batch_size = batch_size,
                             shuffle = False, num_workers = num_workers)
 
-    total, count = 0, 0
+    total_score, count = 0, 0
 
     for batch in tqdm(loader):
         
-        FP = batch["FP"]
+        FP = batch["FP"].long()
         FP_pred = predictor(batch)
-        loss = F.binary_cross_entropy_with_logits(FP_pred, FP)
+        score = (F.cosine_similarity(FP, FP_pred) + 1.0) / 2.0
 
-        total += loss.item()
-        count += 1
+        total_score += score.sum().item()
+        count += FP.shape[0]
     
-    return total / count
+    return total_score / count
 
 def train_predictor(data: Dataset = None,
                     train_indices: List[int] = None, 
@@ -75,14 +75,14 @@ def train_predictor(data: Dataset = None,
     opt = get_optim(predictor, config)
 
     # Start training. Terminate training if the validation accuracy stops improving.
-    best_val_score, best_predictor = -1, None
+    best_val_score, best_predictor = -1 , None
     ep, cycle = 0, 0
 
     while True:
 
         predictor.train()
 
-        for batch in tqdm(train_loader):
+        for batch in train_loader:
             
             FP = batch["FP"]
             FP_pred = predictor(batch)
@@ -91,15 +91,16 @@ def train_predictor(data: Dataset = None,
 
         # Validate 
         val_score = test_predictor(predictor = predictor,
-                                   loader = val_loader,
-                                   config = config)
+                                  loader = val_loader,
+                                  config = config)
 
-        progress_message =  f'train predictor ep {ep}, val cosine similarity score {val_score:.2f}'
+        progress_message =  f'train predictor ep {ep}, val score {val_score:.2f}'
         print(progress_message, end="\r", flush=True, time=True)
 
         if val_score > best_val_score:
             best_val_score = val_score
             best_predictor = copy.deepcopy(predictor.state_dict())
+            torch.save(best_predictor, os.path.join(config["output_dir"], "best_predictor_weights.pth"))
             cycle = 0
         else:
             cycle += 1

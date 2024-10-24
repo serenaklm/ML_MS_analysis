@@ -43,7 +43,6 @@ class CustomedDataset(Dataset):
                 "adduct_idx": torch.tensor(int(sample.metadata["adduct_idx"]), dtype = torch.long),
                 "instrument_idx": torch.tensor(int(sample.metadata["instrument_idx"]), dtype = torch.long),
                 "FP": torch.tensor(FP, dtype = torch.float)}
-    
     def __len__(self):
         return len(self.data)
         
