@@ -7,7 +7,7 @@ data:
   num_workers: 2
   bin_resolution: 1.0
   max_da: 1000
-  FP_type: "morgan4_4096"
+  FP_type: "morgan6_2048"
 # "maccs": 167,
 # "morgan4_256": 256,
 # "morgan4_1024": 1024, 

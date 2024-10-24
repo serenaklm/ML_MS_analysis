@@ -33,9 +33,7 @@ def split_data(data: Dataset = None,
                               prob * train_ratio], dim = -1)  # train split prob
             
         else:
-            raise NotImplementedError()
-        
-            logits = splitter(smiles_emb, mz_binned)
+            logits = splitter(batch)
             prob = F.softmax(logits, dim = -1)
 
         # Sample the binary mask

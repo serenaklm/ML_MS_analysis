@@ -7,7 +7,7 @@ data:
 dataprocessing: 
   batch_size: 512
   num_workers: 2
-  num_batches: 500
+  num_batches: 10
 
 dataloader:
   bin_resolution: 1.0
@@ -18,9 +18,8 @@ dataloader:
 model:
   name: MLP
   train_params:
-    n_outer_loops: 500 
-    num_batches: 300
-    patience: 5 
+    n_outer_loops: 10
+    patience: 1
     convergence_threshold: 0.003
     w_gap: 1.0
     w_ratio: 1.0 

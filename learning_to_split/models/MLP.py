@@ -13,6 +13,7 @@ class MLP(nn.Module):
                        model_dim: int = 512,
                        hidden_dim: int = 2048,
                        output_dim: int = 1024,
+                       FP_dim: int = 256,
                        dropout_rate: float = 0.2,
                        include_adduct_idx: bool = False,
                        include_instrument_idx: bool = False):
@@ -45,6 +46,13 @@ class MLP(nn.Module):
         mul = 1
         if include_adduct_idx: mul +=1 
         if include_instrument_idx: mul +=1 
+        if self.is_splitter: 
+            mul += 1 
+            self.FP_MLP = nn.Sequential(nn.Linear(FP_dim, hidden_dim),
+                                              nn.GELU(),
+                                              nn.Dropout(dropout_rate),
+                                              nn.Linear(hidden_dim, model_dim))
+
         self.pred_layer = nn.Sequential(nn.Linear(mul * model_dim, hidden_dim),
                                         nn.GELU(),
                                         nn.Dropout(dropout_rate),
@@ -54,7 +62,6 @@ class MLP(nn.Module):
 
         # Unpack the batch 
         binned_ms = batch["binned_MS"]
-        FP = batch["FP"]
         adduct_idx, instrument_idx = batch["adduct_idx"], batch["instrument_idx"]
 
         # Get the embeddings 
@@ -69,7 +76,14 @@ class MLP(nn.Module):
         if self.include_instrument_idx:
             emb = torch.concat([emb, instrument_emb], dim = -1)
 
-        emb = emb.contiguous()
-        FP_pred = self.pred_layer(emb)
+        # Get the FP emb if splitter 
+        if self.is_splitter:
+            
+            FP = batch["FP"]
+            FP_emb = self.FP_MLP(FP)
+            emb = torch.concat([emb, FP_emb], dim = -1)
 
-        return FP_pred
+        emb = emb.contiguous()
+        pred = self.pred_layer(emb)
+
+        return pred

@@ -6,13 +6,13 @@ from typing import Any, Callable, List
 
 from torch.utils.data import Dataset, Subset
 
-from utils import read_config, get_all_spectra
+from utils import read_config, get_all_spectra, print_split_status, get_optim
 
 from dataloader import CustomedDataset
 from models.build import ModelFactory
-from training import split_data, train_predictor
+from training import split_data, train_predictor, test_predictor, train_splitter
 
-def update_config(config):
+def update_config(config, args):
     
     # # Update the input_dim 
     input_dim = int(config["dataloader"]["max_da"] / config["dataloader"]["bin_resolution"])
@@ -35,7 +35,16 @@ def update_config(config):
     config["model"][model_name]["input_dim"] = input_dim
     config["model"][model_name]["output_dim"] = FP_dim_mapping[config["dataloader"]["FP_type"]]
 
+    # Update the output directory 
+    output_dir = args.output_dir
+    print(output_dir)
+    a = z 
+
     return config 
+
+
+def save():
+    print() 
 
 def learning_to_split(config: dict, 
                       data: List,
@@ -48,23 +57,61 @@ def learning_to_split(config: dict,
     train_ratio = config["model"]["train_params"]["train_ratio"]
     assert train_ratio > 0.0 and train_ratio < 1.0, "Training ratio needs to be between 0.0 and 1.0."
 
+    # Get the splitter
     splitter = ModelFactory.get_model(config, splitter = True)
+    opt = get_optim(splitter, config)
 
     for outer_loop in range(config["model"]["train_params"]["n_outer_loops"]):
 
+        # Train the predictor 
         predictor = ModelFactory.get_model(config, predictor = True)
         random_split = True if outer_loop == 0 else False
+
         split_stats, train_indices, test_indices = split_data(data, splitter, config, random_split) 
 
         val_score = train_predictor(data = data, train_indices = train_indices,
                                     predictor = predictor, config = config)
         
-        # test_score = test_predictor(data = data, test_indices = test_indices,
-        #                             predictor = predictor, args = args)
+        test_score = test_predictor(data = data, test_indices = test_indices,
+                                    predictor = predictor, config = config)
         
-        # if verbose: print_split_status(outer_loop, split_stats, val_score, test_score)
+        if verbose: print_split_status(outer_loop, split_stats, val_score, test_score)
 
+        gap = val_score - test_score
 
+        if gap > best_gap:
+            
+            best_gap, num_no_improvements = gap, 0
+
+            best_split = {"splitter":       copy.deepcopy(splitter.state_dict()),
+                          "predictor":      copy.deepcopy(predictor.state_dict()),
+                          "train_indices":  train_indices,
+                          "test_indices":   test_indices,
+                          "val_score":      val_score,
+                          "test_score":     test_score,
+                          "split_stats":    split_stats,
+                          "outer_loop":     outer_loop,
+                          "best_gap":       best_gap}
+
+        else: num_no_improvements += 1
+        
+        if num_no_improvements == config["model"]["train_params"]["patience"]: break
+
+        # Train the splitter
+        train_splitter(splitter, predictor, data, test_indices, opt, config,
+                       verbose = verbose)
+
+    # Done! Print the best split.
+    if verbose:
+        print("Finished!\nBest split:")
+        print_split_status(best_split["outer_loop"], best_split["split_stats"],
+                           best_split["val_score"], best_split["test_score"])
+    
+    # Save the processs
+    print("okay need to save")
+    save()
+    a = z 
+        
 
 if __name__ == "__main__":
 
@@ -73,16 +120,13 @@ if __name__ == "__main__":
 
     parser.add_argument("--config_dir", type = str, default = "./all_configs", help = "Config directory")
     parser.add_argument("--config_file", type = str, default = "base_config.yaml", help = "Config file")
-
-    parser.add_argument("--disable_checkpoint", action = "store_true", default = False, help = "Disable checkpointing")
-    parser.add_argument("--wandb", action = "store_true", help = "Enable wandb logging")
-    parser.add_argument("--user", type = str, default = "serenakhoolm", help = "Set the user")
+    parser.add_argument("--output_dir", type = str, default = "./results", help = "Output directory")
 
     args = parser.parse_args()
 
     # Read in the config, data, then train 
     config = read_config(os.path.join(args.config_dir, args.config_file))
-    config = update_config(config)
+    config = update_config(config, args)
 
     train_path = os.path.join(config["data"]["dir"], "train.msp")
     val_path = os.path.join(config["data"]["dir"], "val.msp")

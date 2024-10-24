@@ -45,6 +45,7 @@ class ModelFactory:
         if splitter:
             config_backup = copy.deepcopy(config)
             model_name = config_backup["model"]["name"]
+            config_backup["model"][model_name]["FP_dim"] = config_backup["model"][model_name]["output_dim"] 
             config_backup["model"][model_name]["output_dim"] = 2
             model = exec_class(is_splitter = True, **config_backup["model"][config_backup["model"]["name"]])
         else: 
