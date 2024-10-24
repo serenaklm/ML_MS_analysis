@@ -1,6 +1,7 @@
 import copy 
 import yaml
 import math 
+import json
 import pickle
 import numpy as np
 from tqdm import tqdm 
@@ -21,6 +22,10 @@ def read_config(path):
         config = copy.deepcopy(raw_config)
 
     return config
+
+def write_json(data, path):
+    with open(path, "w", encoding = "UTF-8") as f:
+        json.dump(data, f, indent = 4)
 
 # For proccessing of MS data 
 def get_all_spectra(path):

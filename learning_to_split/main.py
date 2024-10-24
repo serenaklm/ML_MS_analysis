@@ -4,9 +4,10 @@ import argparse
 from datetime import datetime
 from typing import Any, Callable, List
 
-from torch.utils.data import Dataset, Subset
+import torch
+import torch.nn as nn 
 
-from utils import read_config, get_all_spectra, print_split_status, get_optim
+from utils import read_config, get_all_spectra, print_split_status, get_optim, write_json
 
 from dataloader import CustomedDataset
 from models.build import ModelFactory
@@ -36,15 +37,23 @@ def update_config(config, args):
     config["model"][model_name]["output_dim"] = FP_dim_mapping[config["dataloader"]["FP_type"]]
 
     # Update the output directory 
+    current_time = datetime.now().strftime("%m-%d-%Y-%H-%M")
     output_dir = args.output_dir
-    print(output_dir)
-    a = z 
+    output_dir = os.path.join(output_dir, current_time)
+    if not os.path.exists(output_dir): os.makedirs(output_dir)
+    config["output_dir"] = output_dir
 
     return config 
 
-
-def save():
-    print() 
+def save(splitter: nn.Module, 
+         predictor: nn.Module, 
+         best_split: dict, 
+         output_dir: str):
+    
+    # Save the stat dict of the splitter and predictor 
+    torch.save(splitter.state_dict(), os.path.join(output_dir, "splitter_weights.pth"))
+    torch.save(predictor.state_dict(), os.path.join(output_dir, "predictor_weights.pth"))
+    write_json(best_split, os.path.join(output_dir, "best_split.json"))
 
 def learning_to_split(config: dict, 
                       data: List,
@@ -83,15 +92,15 @@ def learning_to_split(config: dict,
             
             best_gap, num_no_improvements = gap, 0
 
-            best_split = {"splitter":       copy.deepcopy(splitter.state_dict()),
-                          "predictor":      copy.deepcopy(predictor.state_dict()),
-                          "train_indices":  train_indices,
+            best_split = {"train_indices":  train_indices,
                           "test_indices":   test_indices,
                           "val_score":      val_score,
                           "test_score":     test_score,
                           "split_stats":    split_stats,
                           "outer_loop":     outer_loop,
                           "best_gap":       best_gap}
+            
+            save(splitter, predictor, best_split, config["output_dir"])
 
         else: num_no_improvements += 1
         
@@ -106,12 +115,6 @@ def learning_to_split(config: dict,
         print("Finished!\nBest split:")
         print_split_status(best_split["outer_loop"], best_split["split_stats"],
                            best_split["val_score"], best_split["test_score"])
-    
-    # Save the processs
-    print("okay need to save")
-    save()
-    a = z 
-        
 
 if __name__ == "__main__":
 
