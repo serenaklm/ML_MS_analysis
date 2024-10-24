@@ -1,7 +1,6 @@
 import math
 import copy 
 import yaml
-import json
 import pickle
 from tqdm import tqdm 
 from matchms.importing import load_from_mgf, load_from_msp

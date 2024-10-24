@@ -1,31 +1,41 @@
 project: LS_MS
 seed: 17
 
-# data:
-#   dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
-#   batch_size: 512
-#   num_workers: 2
-#   bin_resolution: 1.0
-#   max_da: 1000
-#   FP_type: "maccs"
+data:
+  dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
 
-# model:
-#   train_params:
-#     lr: 0.0004
-#     weight_decay: 0.1
+dataloader:
+  batch_size: 512
+  num_workers: 2
+  bin_resolution: 1.0
+  max_da: 1000
+  FP_type: "morgan4_256"
 
-#   binned_MS_encoder:
-#     n_unique_adducts: 10
-#     n_unique_instrument_types: 26
-#     model_dim: 512
-#     hidden_dim: 2048
-#     output_dim: 1024
-#     dropout_rate: 0.15
-#     include_adduct_idx: False
-#     include_instrument_idx: False
+model:
+  name: MLP
+  train_params:
+    lr: 0.0004
+    n_outer_loops: 500 
+    num_batches: 300
+    patience: 5 
+    convergence_threshold: 0.003
+    w_gap: 1.0
+    w_ratio: 1.0 
+    w_balance: 1.0
+    train_ratio: 0.8
+  
+  MLP:
+    n_unique_adducts: 10
+    n_unique_instrument_types: 26
+    model_dim: 512
+    hidden_dim: 2048
+    output_dim: 1024
+    dropout_rate: 0.15
+    include_adduct_idx: False
+    include_instrument_idx: False
 
-# trainer:
-#   max_epochs: 200
-#   devices: 4
-#   accelerator: "gpu"
-#   log_every_n_steps: 50
+trainer:
+  max_epochs: 200
+  devices: 4
+  accelerator: "gpu"
+  log_every_n_steps: 50

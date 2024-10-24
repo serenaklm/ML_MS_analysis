@@ -27,8 +27,8 @@ class BinnedMSPredDataset:
                        max_da: int = 1000,
                        FP_type: str = "morgan4_2048",             
                        balance: bool = False,
-                       pin_memory: bool = True,
-    ):
+                       pin_memory: bool = True):
+        
         super().__init__()
 
         self.batch_size = batch_size
