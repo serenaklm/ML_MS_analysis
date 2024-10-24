@@ -1,5 +1,6 @@
 LS_results
 __pycache__
 data/*
-results/*
+**/results/*
+**/results_cache/*
 */wandb
