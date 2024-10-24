@@ -7,7 +7,16 @@ data:
   num_workers: 2
   bin_resolution: 1.0
   max_da: 1000
-  FP_type: "morgan4_1024"
+  FP_type: "morgan4_4096"
+# "maccs": 167,
+# "morgan4_256": 256,
+# "morgan4_1024": 1024, 
+# "morgan4_2048": 2048,
+# "morgan4_4096": 4096,
+# "morgan6_256": 256,
+# "morgan6_1024": 1024, 
+# "morgan6_2048": 2048,
+# "morgan6_4096": 4096
 
 model:
   train_params:

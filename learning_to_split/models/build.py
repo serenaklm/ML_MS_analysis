@@ -1,4 +1,4 @@
-import argparse
+import copy
 from typing import Callable
 
 import torch.nn as nn
@@ -43,8 +43,11 @@ class ModelFactory:
         exec_class = cls.registry[model_name]
 
         if splitter:
-            model = exec_class(is_splitter = True, output_dim = 2, config = config)
+            config_backup = copy.deepcopy(config)
+            model_name = config_backup["model"]["name"]
+            config_backup["model"][model_name]["output_dim"] = 2
+            model = exec_class(is_splitter = True, **config_backup["model"][config_backup["model"]["name"]])
         else: 
-            model = exec_class(is_splitter = False, config = config) # The predictor
+            model = exec_class(is_splitter = False, **config["model"][config["model"]["name"]]) # The predictor
 
         return model

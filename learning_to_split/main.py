@@ -5,22 +5,41 @@ from datetime import datetime
 from typing import Any, Callable, List
 
 from torch.utils.data import Dataset, Subset
-from pytorch_lightning import seed_everything
-
 
 from utils import read_config, get_all_spectra
 
-from training import split_data
+from dataloader import CustomedDataset
 from models.build import ModelFactory
+from training import split_data, train_predictor
 
+def update_config(config):
+    
+    # # Update the input_dim 
+    input_dim = int(config["dataloader"]["max_da"] / config["dataloader"]["bin_resolution"])
 
+    # Update the output_dim 
+    FP_dim_mapping = {"maccs": 167,
+                      "morgan4_256": 256,
+                      "morgan4_1024": 1024, 
+                      "morgan4_2048": 2048,
+                      "morgan4_4096": 4096,
+                      "morgan6_256": 256,
+                      "morgan6_1024": 1024, 
+                      "morgan6_2048": 2048,
+                      "morgan6_4096": 4096}
+
+    if config["dataloader"]["FP_type"] not in FP_dim_mapping: raise ValueError(f"FP type selected not supported.")
+
+    model_name = config["model"]["name"]
+
+    config["model"][model_name]["input_dim"] = input_dim
+    config["model"][model_name]["output_dim"] = FP_dim_mapping[config["dataloader"]["FP_type"]]
+
+    return config 
 
 def learning_to_split(config: dict, 
                       data: List,
                       verbose: bool = True):
-    
-    # Set a random seed 
-    seed_everything(config["seed"])
 
     num_no_improvements = 0
     best_gap, best_split = -1, None
@@ -34,14 +53,12 @@ def learning_to_split(config: dict,
     for outer_loop in range(config["model"]["train_params"]["n_outer_loops"]):
 
         predictor = ModelFactory.get_model(config, predictor = True)
-
         random_split = True if outer_loop == 0 else False
         split_stats, train_indices, test_indices = split_data(data, splitter, config, random_split) 
 
-        print("okay i can reach this point")
-        a = z  
-        # val_score = train_predictor(data = data, train_indices = train_indices,
-        #                             predictor = predictor, args = args)
+        val_score = train_predictor(data = data, train_indices = train_indices,
+                                    predictor = predictor, config = config)
+        
         # test_score = test_predictor(data = data, test_indices = test_indices,
         #                             predictor = predictor, args = args)
         
@@ -65,11 +82,13 @@ if __name__ == "__main__":
 
     # Read in the config, data, then train 
     config = read_config(os.path.join(args.config_dir, args.config_file))
+    config = update_config(config)
+
     train_path = os.path.join(config["data"]["dir"], "train.msp")
     val_path = os.path.join(config["data"]["dir"], "val.msp")
     test_path = os.path.join(config["data"]["dir"], "test.msp")
 
     data = get_all_spectra(train_path) + get_all_spectra(val_path) + get_all_spectra(test_path)
-    print(f"{len(data)} records in total.")
-
+    data = CustomedDataset(data, **config["dataloader"])
+    
     learning_to_split(config, data)

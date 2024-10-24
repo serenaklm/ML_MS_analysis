@@ -4,17 +4,20 @@ seed: 17
 data:
   dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
 
-dataloader:
+dataprocessing: 
   batch_size: 512
   num_workers: 2
+  num_batches: 500
+
+dataloader:
   bin_resolution: 1.0
   max_da: 1000
+  max_MS_peaks: 1000
   FP_type: "morgan4_256"
 
 model:
   name: MLP
   train_params:
-    lr: 0.0004
     n_outer_loops: 500 
     num_batches: 300
     patience: 5 
@@ -34,8 +37,7 @@ model:
     include_adduct_idx: False
     include_instrument_idx: False
 
-trainer:
-  max_epochs: 200
-  devices: 4
-  accelerator: "gpu"
-  log_every_n_steps: 50
+optimizer:
+  name: Adam
+  lr: 0.0005
+  clip_grad_norm: 0

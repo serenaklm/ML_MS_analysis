@@ -3,21 +3,22 @@ from collections import Counter
 
 import torch
 import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
 from torch.distributions.categorical import Categorical
 
-from dataloader import PredictionDataset
 
 @torch.no_grad()
-def split_data(data: List = None,
+def split_data(data: Dataset = None,
                splitter: torch.nn.Module = None,
                config: dict = None,
                random_split = False):
     
     splitter.eval()
 
-    dataset = PredictionDataset(data = data, **config["dataloader"])
-    dataloader = dataset.dataloader()
-
+    dataloader = DataLoader(data, shuffle = False,
+                             batch_size = config["dataprocessing"]["batch_size"],
+                             num_workers = config["dataprocessing"]["num_workers"])
+    
     total_mask, total_y = [], []
 
     for batch in dataloader:

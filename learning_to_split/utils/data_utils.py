@@ -2,6 +2,7 @@ import copy
 import yaml
 import math 
 import pickle
+import numpy as np
 from tqdm import tqdm 
 from matchms.importing import load_from_mgf, load_from_msp
 
@@ -49,3 +50,23 @@ def bin_MS(mz, intensities, bin_resolution, max_da):
 
     return mz_binned
 
+def sort_intensities(mz, intensities, precursor_mz):
+
+    # Add the precursor mz in front
+    order = np.argsort(intensities)[::-1]
+    mz = [precursor_mz] + [mz[i] for i in order]
+    intensities = [0.0] + [intensities[i] for i  in order]
+
+    return mz, intensities
+
+def pad_mz_intensities(mz, intensities, pad_length, mz_pad = 0, intensities_pad = 0):
+
+    length = len(mz)
+    mz = mz + [mz_pad for _ in range(pad_length)]
+    intensities = intensities + [intensities_pad for _ in range(pad_length)]
+    mask = [1 for _ in range(length)] + [0 for _ in range(pad_length)]
+
+    assert len(mz) == len(intensities)
+    assert len(intensities) == len(mask)
+
+    return mz, intensities, mask
