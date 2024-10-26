@@ -16,7 +16,8 @@ class MLP(nn.Module):
                        FP_dim: int = 256,
                        dropout_rate: float = 0.2,
                        include_adduct_idx: bool = False,
-                       include_instrument_idx: bool = False):
+                       include_instrument_idx: bool = False,
+                       device: torch.device = torch.device("cpu")):
         
         super().__init__()
 
@@ -64,6 +65,7 @@ class MLP(nn.Module):
         binned_ms = batch["binned_MS"]
         adduct_idx, instrument_idx = batch["adduct_idx"], batch["instrument_idx"]
 
+        # 
         # Get the embeddings 
         binned_ms_emb = self.MLP(binned_ms)
         adduct_emb = self.adduct_embedding(adduct_idx)

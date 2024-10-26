@@ -51,4 +51,4 @@ class ModelFactory:
         else: 
             model = exec_class(is_splitter = False, **config["model"][config["model"]["name"]]) # The predictor
 
-        return model
+        return model.to(config["device"])
