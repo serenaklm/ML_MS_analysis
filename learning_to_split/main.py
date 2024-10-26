@@ -1,5 +1,6 @@
 import os 
 import copy
+import wandb
 import argparse 
 from datetime import datetime
 from typing import Any, Callable, List
@@ -15,7 +16,7 @@ from training import split_data, train_predictor, test_predictor, train_splitter
 
 def update_config(config, args):
     
-    # # Update the input_dim 
+    # Update the input_dim 
     input_dim = int(config["dataloader"]["max_da"] / config["dataloader"]["bin_resolution"])
 
     # Update the output_dim 
@@ -43,6 +44,16 @@ def update_config(config, args):
     if not os.path.exists(output_dir): os.makedirs(output_dir)
     config["output_dir"] = output_dir
 
+    # Update the device 
+    device_idx = config["device"]
+    if torch.cuda.is_available(): 
+        device = torch.device(f"cuda:{device_idx}")
+    else:
+        device = torch.device("cpu")
+
+    config[device] = device 
+    config["model"][model_name]["device"] = device 
+
     return config 
 
 def save(splitter: nn.Module, 
@@ -58,6 +69,9 @@ def save(splitter: nn.Module,
 def learning_to_split(config: dict, 
                       data: List,
                       verbose: bool = True):
+
+    run = wandb.init(project = config["project"])
+    config["run"] = run 
 
     num_no_improvements = 0
     best_gap, best_split = -1, None
@@ -87,6 +101,7 @@ def learning_to_split(config: dict,
         if verbose: print_split_status(outer_loop, split_stats, val_score, test_score)
 
         gap = val_score - test_score
+        run.log({"gap/gap": gap})
 
         if gap > best_gap:
             

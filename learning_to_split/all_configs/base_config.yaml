@@ -1,5 +1,6 @@
 project: LS_MS
 seed: 17
+device: 4 
 
 data:
   dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
@@ -7,7 +8,7 @@ data:
 dataprocessing: 
   batch_size: 512
   num_workers: 2
-  num_batches: 10
+  num_batches: 500
 
 dataloader:
   bin_resolution: 1.0
@@ -18,7 +19,7 @@ dataloader:
 model:
   name: MLP
   train_params:
-    n_outer_loops: 10
+    n_outer_loops: 150
     patience: 1
     convergence_threshold: 0.003
     w_gap: 1.0

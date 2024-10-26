@@ -23,6 +23,7 @@ class MLP(nn.Module):
 
         # Set some params
         self.is_splitter = is_splitter 
+        self.device = device
 
         # Get the MLP 
         self.MLP = nn.Sequential(nn.Linear(input_dim, model_dim),
@@ -62,10 +63,9 @@ class MLP(nn.Module):
     def forward(self, batch):
 
         # Unpack the batch 
-        binned_ms = batch["binned_MS"]
-        adduct_idx, instrument_idx = batch["adduct_idx"], batch["instrument_idx"]
+        binned_ms = batch["binned_MS"].to(self.device)
+        adduct_idx, instrument_idx = batch["adduct_idx"].to(self.device), batch["instrument_idx"].to(self.device)
 
-        # 
         # Get the embeddings 
         binned_ms_emb = self.MLP(binned_ms)
         adduct_emb = self.adduct_embedding(adduct_idx)
@@ -81,7 +81,7 @@ class MLP(nn.Module):
         # Get the FP emb if splitter 
         if self.is_splitter:
             
-            FP = batch["FP"]
+            FP = batch["FP"].to(self.device)
             FP_emb = self.FP_MLP(FP)
             emb = torch.concat([emb, FP_emb], dim = -1)
 

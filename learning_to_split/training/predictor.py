@@ -38,7 +38,7 @@ def test_predictor(data: Dataset = None,
 
     for batch in tqdm(loader):
         
-        FP = batch["FP"].long()
+        FP = batch["FP"].long().to(config["device"])
         FP_pred = predictor(batch)
         score = (F.cosine_similarity(FP, FP_pred) + 1.0) / 2.0
 
@@ -84,7 +84,7 @@ def train_predictor(data: Dataset = None,
 
         for batch in train_loader:
             
-            FP = batch["FP"]
+            FP = batch["FP"].to(config["device"])
             FP_pred = predictor(batch)
             loss = F.binary_cross_entropy_with_logits(FP_pred, FP)
             optim_step(predictor, opt, loss, config)

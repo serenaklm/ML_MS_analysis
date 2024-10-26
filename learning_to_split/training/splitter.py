@@ -69,8 +69,6 @@ def compute_y_given_z_loss(mask, FP, no_grad = False):
     if not torch.isfinite(loss_p_marginal):
         loss_p_marginal = torch.ones_like(loss_p_marginal)
 
-    loss_p_marginal = torch.where(loss_p_marginal > 1e3, torch.tensor(1.0), loss_p_marginal)
-
     if no_grad:
         loss_p_marginal = loss_p_marginal.item()
 
@@ -78,14 +76,14 @@ def compute_y_given_z_loss(mask, FP, no_grad = False):
 
 def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, config):
     
-
+    run = config["run"]
     stats = {}
     for k in ["loss_ratio", "loss_balance", "loss_gap", "loss"]: stats[k] = []
     
     for batch, batch_test in zip(loader, test_loader):
 
         logit = splitter(batch)
-        FP = batch["FP"]
+        FP = batch["FP"].to(config["device"])
         prob = F.softmax(logit, dim = -1)[:, 1]
 
         # Ensures that the ratio are compatible
@@ -99,7 +97,7 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
 
         with torch.no_grad():
 
-            FP_test = batch_test["FP"]
+            FP_test = batch_test["FP"].to(config["device"])
             FP_pred_test = predictor(batch_test)
             score = (F.cosine_similarity(FP_test, FP_pred_test) + 1.0) / 2.0 # Higher the score the more "correct" it is
             score_test = torch.concat([(1.0 - score)[:, None], score[:, None]], dim = -1)
@@ -122,6 +120,12 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
         stats["loss_balance"].append(loss_balance.item())
         stats["loss_gap"].append(loss_gap.item())
         stats["loss"].append(loss.item())
+
+        # Add to wandb 
+        run.log({"splitter/loss_ratio": loss_ratio.item()})
+        run.log({"splitter/loss_balance": loss_balance.item()})
+        run.log({"splitter/loss_gap": loss_gap.item()})
+        run.log({"splitter/loss": loss.item()})
 
     for k, v in stats.items():
         stats[k] = torch.mean(torch.tensor(v)).item()
