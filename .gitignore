@@ -3,4 +3,5 @@ __pycache__
 data/*
 **/results/*
 **/results_cache/*
+**/results_cache_set/*
 */wandb
