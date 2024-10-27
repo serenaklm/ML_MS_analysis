@@ -105,6 +105,7 @@ class MSTransformerEncoder(pl.LightningModule):
 
         # Encode with transformer 
         # True are not allowed to attend while False values will be unchanged.
+        mask = ~mask
         MS_emb = self.MS_encoder(peaks_emb, src_key_padding_mask = mask)
         MS_emb = MS_emb[:, 0, :]
 
@@ -120,7 +121,7 @@ class MSTransformerEncoder(pl.LightningModule):
         if self.include_adduct_idx:
             feats = torch.concat([feats, instrument_type_emb], dim = -1)
 
-        FP_pred = self.MLP(feats)
+        FP_pred = self.pred_layer(feats)
         
         return FP_pred
 

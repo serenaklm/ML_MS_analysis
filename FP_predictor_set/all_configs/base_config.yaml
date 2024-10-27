@@ -8,8 +8,16 @@ data:
   bin_resolution: 1.0
   max_da: 1000
   max_MS_peaks: 1000
-  FP_type: "maccs"
-
+  FP_type: "morgan6_256"
+            # "maccs": 167,
+            # "morgan4_256": 256,
+            # "morgan4_1024": 1024, 
+            # "morgan4_2048": 2048,
+            # "morgan4_4096": 4096,
+            # "morgan6_256": 256,
+            # "morgan6_1024": 1024, 
+            # "morgan6_2048": 2048,
+            # "morgan6_4096": 4096}
 model:
   train_params:
     lr: 0.0004
@@ -18,7 +26,7 @@ model:
     n_unique_adducts: 10
     n_unique_instrument_types: 26
     n_heads: 8
-    n_layers: 8
+    n_layers: 6
     model_dim: 512
     hidden_dim: 2048
     dropout_rate: 0.15
@@ -26,7 +34,7 @@ model:
     include_instrument_idx: False
 
 trainer:
-  max_epochs: 200
+  max_epochs: 25
   devices: 4
   accelerator: "gpu"
   log_every_n_steps: 50
