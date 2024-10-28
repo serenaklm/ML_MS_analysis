@@ -1,13 +1,13 @@
-project: FP_prediction_binned_res_0.1
+project: FP_prediction_binned_res_0.01
 seed: 17
 
 data:
   dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
   batch_size: 512
   num_workers: 2
-  bin_resolution: 0.1
+  bin_resolution: 0.01
   max_da: 1000
-  FP_type: morgan6_4096
+  FP_type: maccs
 # "maccs": 167,
 # "morgan4_256": 256,
 # "morgan4_1024": 1024, 

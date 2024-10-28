@@ -7,13 +7,13 @@ from matchms.importing import load_from_mgf
 if __name__ == "__main__":
 
 
-    project_folder =  "C:\\Users\\klingmin\\Desktop\\projects\\get_fragmentation_tree\\project"
-    temp_folder = "C:\\Users\\klingmin\\Desktop\\projects\\get_fragmentation_tree\\temp"
-    data_folder =  'C:\\Users\\klingmin\\Desktop\\projects\\get_fragmentation_tree\\individual_MS_alpha_0.0\\'
+    project_folder =  "C:\\Users\\klingmin\\Desktop\\projects\\analyze_sirius_fragmentation_tree\\project"
+    temp_folder = "C:\\Users\\klingmin\\Desktop\\projects\\analyze_sirius_fragmentation_tree\\temp"
+    data_folder =  'C:\\Users\\klingmin\\Desktop\\projects\\analyze_sirius_fragmentation_tree\\individual_MS_alpha_0.0\\'
 
     for alpha in [0.0, 0.05, 0.10, 0.15]:
 
-        folder = f"C:\\Users\\klingmin\\Desktop\\projects\\get_fragmentation_tree\\individual_MS_alpha_{alpha}\\"
+        folder = f"C:\\Users\\klingmin\\Desktop\\projects\\analyze_sirius_fragmentation_tree\\individual_MS_alpha_{alpha}\\"
         results_folder = f"./results_alpha_{alpha}"
         if not os.path.exists(results_folder): os.makedirs(results_folder)
         i = 0 

@@ -8,7 +8,7 @@ data:
   bin_resolution: 1.0
   max_da: 1000
   max_MS_peaks: 1000
-  FP_type: "morgan6_256"
+  FP_type: "morgan4_1024"
             # "maccs": 167,
             # "morgan4_256": 256,
             # "morgan4_1024": 1024, 

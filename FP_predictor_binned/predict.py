@@ -8,12 +8,24 @@ import torch.nn.functional as F
 from dataloader import BinnedMSPredDataset
 from modules import MSBinnedModel
 
-from utils import pickle_data
+from utils import pickle_data, read_config
 
 @torch.no_grad()
-def predict(filepath, model, device, batch_size):
+def predict(model, config, device, batch_size):
 
-    dataset = BinnedMSPredDataset(filepath, batch_size = batch_size, num_workers = 4)
+    bin_resolution = config["data"]["bin_resolution"]
+    max_da = config["data"]["max_da"]
+    FP_type = config["data"]["FP_type"]
+
+    filepath = os.path.join(config["data"]["dir"], "test.msp")
+
+    dataset = BinnedMSPredDataset(filepath, 
+                                  batch_size = batch_size,
+                                  bin_resolution = bin_resolution,
+                                  max_da = max_da, 
+                                  FP_type = FP_type,
+                                  num_workers = 4)
+    
     data_loader = dataset.test_dataloader()
     
     # Run model predictions
@@ -41,8 +53,9 @@ def predict(filepath, model, device, batch_size):
 
 def main(args):
 
-    # Get the config
+    # Get the checkpoint and config
     checkpoint_dir = args.checkpoint 
+    config = read_config(os.path.join(checkpoint_dir, "run.yaml"))
 
     # Load the model 
     model = MSBinnedModel.load_from_checkpoint(os.path.join(checkpoint_dir, "model.ckpt"))
@@ -50,7 +63,7 @@ def main(args):
     model.to(args.device)
 
     # Get the predictions 
-    FP_pred = predict(args.test_filepath, model, args.device, args.batch_size)
+    FP_pred = predict(model, config, args.device, args.batch_size)
 
     # Write the predictions
     output_path = os.path.join(checkpoint_dir, "test_results.pkl")
@@ -61,8 +74,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--batch_size", type = int, default = 32, help = "Batch size when running prediction.")
-    parser.add_argument("--test_filepath", type = str, help = "Filepath of the test data requirede for prediction.")
     parser.add_argument("--device", type = str, default = "cuda", help = "The device to use for prediction.")
-    parser.add_argument("--checkpoint", type = str, required = True, help = "Path to a model checkpoint")
+    parser.add_argument("--checkpoint", type = str, help = "Path to a model checkpoint")
     args = parser.parse_args()
-    main(args)
+
+    # Manually add in (hack)
+    folder = "./results"
+    all_folders = [os.path.join(folder, f) for f in os.listdir(folder)]
+
+    for idx, f1 in enumerate(all_folders):    
+        all_folders[idx] = os.path.join(f1, [f for f in os.listdir(f1)][0])
+        
+    for f in all_folders:
+
+        args.checkpoint = f
+        main(args)
+
+    

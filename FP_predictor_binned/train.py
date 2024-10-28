@@ -150,7 +150,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_dir", type = str, default = "./all_configs", help = "Config directory")
-    parser.add_argument("--config_file", type = str, default = "config_resolution_0.1.yaml", help = "Config file")
+    parser.add_argument("--config_file", type = str, default = "config_resolution_0.01.yaml", help = "Config file")
     parser.add_argument("--torch_hub_cache", type = str, default = "./cache", help = "Torch hub cache directory")
     parser.add_argument("--output_dir", type = str, default = "./results_cache", help = "Results cache output directory")
     parser.add_argument("--results_dir", type = str, default = "./results", help = "Results output directory")

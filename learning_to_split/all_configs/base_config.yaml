@@ -19,8 +19,8 @@ dataloader:
 model:
   name: MLP
   train_params:
-    n_outer_loops: 150
-    patience: 1
+    n_outer_loops: 300
+    patience: 5
     convergence_threshold: 0.003
     w_gap: 1.0
     w_ratio: 1.0 
