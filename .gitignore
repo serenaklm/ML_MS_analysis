@@ -5,4 +5,3 @@ data/*
 **/results_cache/*
 **/results_cache_set/*
 */wandb
-PREVIOUS/bondnet
