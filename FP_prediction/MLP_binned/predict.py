@@ -17,7 +17,7 @@ def predict(model, config, device, batch_size):
     max_da = config["data"]["max_da"]
     FP_type = config["data"]["FP_type"]
 
-    filepath = os.path.join(config["data"]["dir"], "test.msp")
+    filepath = os.path.join(config["data"]["dir"], "test_data.pkl")
 
     dataset = BinnedMSPredDataset(filepath, 
                                   batch_size = batch_size,
@@ -36,10 +36,9 @@ def predict(model, config, device, batch_size):
         # Unpack the batch 
         id_ = batch["new_id_"]
         binned_ms = batch["binned_MS"].to(device)
-        adduct_idx, instrument_idx = batch["adduct_idx"].to(device), batch["instrument_idx"].to(device)
 
         # Forward pass
-        FP_pred = model(binned_ms, adduct_idx, instrument_idx).cpu()
+        FP_pred = model(binned_ms).cpu()
 
         # Save the predctions 
         id_list.extend(id_)
@@ -64,6 +63,9 @@ def main(args):
 
     # Get the predictions 
     FP_pred = predict(model, config, args.device, args.batch_size)
+
+    # Get the F score 
+    
 
     # Write the predictions
     output_path = os.path.join(checkpoint_dir, "test_results.pkl")

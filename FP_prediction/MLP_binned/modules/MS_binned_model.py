@@ -16,9 +16,7 @@ class MSBinnedModel(pl.LightningModule):
                        model_dim: int = 512,
                        hidden_dim: int = 2048,
                        output_dim: int = 1024,
-                       dropout_rate: float = 0.2,
-                       include_adduct_idx: bool = False,
-                       include_instrument_idx: bool = False):
+                       dropout_rate: float = 0.2):
         
         super().__init__()
         self.save_hyperparameters()
@@ -46,33 +44,18 @@ class MSBinnedModel(pl.LightningModule):
         self.adduct_embedding = nn.Embedding(n_unique_adducts, model_dim)
         self.instrument_type_embedding = nn.Embedding(n_unique_instrument_types, model_dim)
 
-        # Get the prediction layer 
-        self.include_adduct_idx = include_adduct_idx
-        self.include_instrument_idx = include_instrument_idx
-
-        mul = 1
-        if include_adduct_idx: mul +=1 
-        if include_instrument_idx: mul +=1 
-        self.pred_layer = nn.Sequential(nn.Linear(mul * model_dim, hidden_dim),
+        self.pred_layer = nn.Sequential(nn.Linear(model_dim, hidden_dim),
                                         nn.GELU(),
                                         nn.Dropout(dropout_rate),
                                         nn.Linear(hidden_dim, output_dim))
 
-    def forward(self, binned_ms, adduct_idx, instrument_idx):
+    def forward(self, binned_ms):
 
         # Get the embeddings 
         binned_ms_emb = self.MLP(binned_ms)
-        adduct_emb = self.adduct_embedding(adduct_idx)
-        instrument_emb = self.instrument_type_embedding(instrument_idx)
 
         # Get the prediction 
         emb = binned_ms_emb
-        if self.include_adduct_idx:
-            emb = torch.concat([emb, adduct_emb], dim = -1)
-        if self.include_instrument_idx:
-            emb = torch.concat([emb, instrument_emb], dim = -1)
-
-        emb = emb.contiguous()
         FP_pred = self.pred_layer(emb)
 
         return FP_pred 
@@ -86,10 +69,9 @@ class MSBinnedModel(pl.LightningModule):
         # Unpack the batch 
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
-        adduct_idx, instrument_idx = batch["adduct_idx"], batch["instrument_idx"]
 
         # Forward pass
-        FP_pred = self(binned_ms, adduct_idx, instrument_idx)
+        FP_pred = self(binned_ms)
 
         # Compute the loss 
         loss = self.compute_loss(FP_pred, FP)
@@ -105,10 +87,9 @@ class MSBinnedModel(pl.LightningModule):
         # Unpack the batch 
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
-        adduct_idx, instrument_idx = batch["adduct_idx"], batch["instrument_idx"]
 
         # Forward pass
-        FP_pred = self(binned_ms, adduct_idx, instrument_idx)
+        FP_pred = self(binned_ms)
 
         # Compute the loss 
         loss = self.compute_loss(FP_pred, FP)

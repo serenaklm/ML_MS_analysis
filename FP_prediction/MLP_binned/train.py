@@ -51,8 +51,7 @@ def update_config(config):
     config["model"]["binned_MS_encoder"]["input_dim"] = input_dim
 
     # Update the output_dim 
-    FP_dim_mapping = {"maccs": 167,
-                      "morgan4_256": 256,
+    FP_dim_mapping = {"morgan4_256": 256,
                       "morgan4_1024": 1024, 
                       "morgan4_2048": 2048,
                       "morgan4_4096": 4096,
@@ -150,13 +149,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_dir", type = str, default = "./all_configs", help = "Config directory")
-    parser.add_argument("--config_file", type = str, default = "config_resolution_0.01.yaml", help = "Config file")
+    parser.add_argument("--config_file", type = str, default = "base_config.yaml", help = "Config file")
     parser.add_argument("--torch_hub_cache", type = str, default = "./cache", help = "Torch hub cache directory")
     parser.add_argument("--output_dir", type = str, default = "./results_cache", help = "Results cache output directory")
     parser.add_argument("--results_dir", type = str, default = "./results", help = "Results output directory")
     parser.add_argument("--debug", action = "store_true", default = False, help = "Set debug mode")
     parser.add_argument("--disable_checkpoint", action = "store_true", default = False, help = "Disable checkpointing")
-    parser.add_argument("--wandb", action = "store_true", help = "Enable wandb logging")
+    parser.add_argument("--wandb", action = "store_true",  default = True, help = "Enable wandb logging")
     parser.add_argument("--user", type = str, default = "serenakhoolm", help = "Set the user")
 
     args = parser.parse_args()

@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 import pytorch_lightning as pl
 
-from utils import get_all_spectra, bin_MS
+from utils import load_pickle, bin_MS
 
 class Data(object):
 
@@ -44,9 +44,9 @@ class BinnedMSDataset(pl.LightningDataModule):
         self.FP_type = FP_type
 
         # Get the data 
-        train = get_all_spectra(os.path.join(dir, "train.msp"))
-        val = get_all_spectra(os.path.join(dir, "val.msp"))
-        test = get_all_spectra(os.path.join(dir, "test.msp"))
+        train = load_pickle(os.path.join(dir, "train_data.pkl"))
+        val = load_pickle(os.path.join(dir, "val_data.pkl"))
+        test = load_pickle(os.path.join(dir, "test_data.pkl"))
 
         # Prepare splits
         self._data = train + val + test
@@ -86,14 +86,14 @@ class BinnedMSDataset(pl.LightningDataModule):
         """Processes a single data sample"""
 
         # Bin the MS 
-        binned_MS = bin_MS(sample.mz, sample.intensities, self.bin_resolution, self.max_da)
+        mz = [float(p["mz"]) for p in sample["peaks"]]
+        intensities = [float(p["intensity_norm"]) for p in sample["peaks"]]
+        binned_MS = bin_MS(mz, intensities, self.bin_resolution, self.max_da)
 
         # Geet the FP
-        FP = [float(c) for c in sample.metadata[self.FP_type]]
+        FP = [float(c) for c in sample[self.FP_type]]
 
         return {"binned_MS": torch.tensor(binned_MS, dtype = torch.float),
-                "adduct_idx": torch.tensor(int(sample.metadata["adduct_idx"]), dtype = torch.long),
-                "instrument_idx": torch.tensor(int(sample.metadata["instrument_idx"]), dtype = torch.long),
                 "FP": torch.tensor(FP, dtype = torch.float)}
         
     def train_dataloader(self):
