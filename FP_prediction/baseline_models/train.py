@@ -110,7 +110,7 @@ def train(config):
     # Get trainer and logger
     checkpoint_callback = ModelCheckpoint(monitor="val/loss",
                                           dirpath = config["args"]["results_dir"],
-                                          filename = 'lowest_loss-{epoch:02d}-{val/loss:.2f}',
+                                          filename = '{epoch:02d}-{val/loss:.2f}',
                                           every_n_train_steps = config["trainer"]["log_every_n_steps"], 
                                           save_top_k = 2, mode = "min")
 

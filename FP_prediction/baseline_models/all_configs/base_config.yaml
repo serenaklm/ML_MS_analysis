@@ -6,7 +6,7 @@ data:
   train_folder: "train_data"
   val_folder: "val_data"
   test_folder: "test_data"
-  batch_size: 16
+  batch_size: 1024
   num_workers: 4
   bin_resolution: 1.0
   max_da: 1500
