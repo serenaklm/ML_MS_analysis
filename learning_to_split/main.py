@@ -8,7 +8,7 @@ from typing import Any, Callable, List
 import torch
 import torch.nn as nn 
 
-from utils import set_seed, read_config, get_all_spectra, print_split_status, get_optim, write_json
+from utils import set_seed, read_config, load_pickle, print_split_status, get_optim, write_json
 
 from dataloader import CustomedDataset
 from models.build import ModelFactory
@@ -149,11 +149,9 @@ if __name__ == "__main__":
     # Set seed
     set_seed(config["seed"])
 
-    train_path = os.path.join(config["data"]["dir"], "train.msp")
-    val_path = os.path.join(config["data"]["dir"], "val.msp")
-    test_path = os.path.join(config["data"]["dir"], "test.msp")
-
-    data = get_all_spectra(train_path) + get_all_spectra(val_path) + get_all_spectra(test_path)
+    # Get the data 
+    data_path = "/data/rbg/users/klingmin/projects/MS_processing/data_splitting/nist2020/splits/data.pkl"
+    data = load_pickle(data_path)
     data = CustomedDataset(data, **config["dataloader"])
     
     learning_to_split(config, data)

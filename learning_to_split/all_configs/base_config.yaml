@@ -14,7 +14,7 @@ dataloader:
   bin_resolution: 1.0
   max_da: 1000
   max_MS_peaks: 1000
-  FP_type: "morgan4_256"
+  FP_type: "morgan4_2048"
 
 model:
   name: MLP
@@ -28,14 +28,10 @@ model:
     train_ratio: 0.8
   
   MLP:
-    n_unique_adducts: 10
-    n_unique_instrument_types: 26
     model_dim: 512
     hidden_dim: 2048
     output_dim: 1024
     dropout_rate: 0.15
-    include_adduct_idx: False
-    include_instrument_idx: False
 
   MSTransformer:
     n_unique_adducts: 10

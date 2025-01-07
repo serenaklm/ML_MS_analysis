@@ -7,16 +7,12 @@ from .build import ModelFactory
 class MLP(nn.Module):
     
     def __init__(self, is_splitter: bool = False, 
-                       n_unique_adducts: int = 10, 
-                       n_unique_instrument_types: int = 26,
                        input_dim: int = 888,
                        model_dim: int = 512,
                        hidden_dim: int = 2048,
                        output_dim: int = 1024,
                        FP_dim: int = 256,
                        dropout_rate: float = 0.2,
-                       include_adduct_idx: bool = False,
-                       include_instrument_idx: bool = False,
                        device: torch.device = torch.device("cpu")):
         
         super().__init__()
@@ -37,17 +33,7 @@ class MLP(nn.Module):
                                  nn.Dropout(dropout_rate),
                                  nn.Linear(hidden_dim, model_dim))
         
-        # Get the adduct and instrument type embeddings
-        self.adduct_embedding = nn.Embedding(n_unique_adducts, model_dim)
-        self.instrument_type_embedding = nn.Embedding(n_unique_instrument_types, model_dim)
-
-        # Get the prediction layer 
-        self.include_adduct_idx = include_adduct_idx
-        self.include_instrument_idx = include_instrument_idx
-
         mul = 1
-        if include_adduct_idx: mul +=1 
-        if include_instrument_idx: mul +=1 
         if self.is_splitter: 
             mul += 1 
             self.FP_MLP = nn.Sequential(nn.Linear(FP_dim, hidden_dim),
@@ -64,19 +50,12 @@ class MLP(nn.Module):
 
         # Unpack the batch 
         binned_ms = batch["binned_MS"].to(self.device)
-        adduct_idx, instrument_idx = batch["adduct_idx"].to(self.device), batch["instrument_idx"].to(self.device)
 
         # Get the embeddings 
         binned_ms_emb = self.MLP(binned_ms)
-        adduct_emb = self.adduct_embedding(adduct_idx)
-        instrument_emb = self.instrument_type_embedding(instrument_idx)
 
         # Get the prediction 
         emb = binned_ms_emb
-        if self.include_adduct_idx:
-            emb = torch.concat([emb, adduct_emb], dim = -1)
-        if self.include_instrument_idx:
-            emb = torch.concat([emb, instrument_emb], dim = -1)
 
         # Get the FP emb if splitter 
         if self.is_splitter:

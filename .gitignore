@@ -1,7 +1,5 @@
-LS_results
-__pycache__
-data/*
-**/results/*
+**/nist2020/*
 **/results_cache/*
-**/results_cache_set/*
-*/wandb
+**/results/*
+**/DreaMS/*
+**/wandb/*

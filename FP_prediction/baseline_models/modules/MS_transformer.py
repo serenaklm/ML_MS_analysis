@@ -36,6 +36,7 @@ class LearnableFourierFeatures(nn.Module):
 class MSTransformerEncoder(pl.LightningModule):
     
     def __init__(self, lr: float = 1e-4,
+                       weight_decay: float = 0.10, 
                        n_heads: int = 6,
                        n_layers: int = 12,
                        input_dim: int = 1000,
@@ -51,6 +52,7 @@ class MSTransformerEncoder(pl.LightningModule):
         self.n_heads = n_heads
         self.n_layers = n_layers
         self.lr = lr
+        self.weight_decay = weight_decay
         
         # Get a mean logger 
         self.avg_loss_train, self.avg_loss_val = [], []
@@ -156,7 +158,7 @@ class MSTransformerEncoder(pl.LightningModule):
 
     def configure_optimizers(self):
        
-       optimizer = torch.optim.Adam(self.parameters(), lr = self.lr)
+       optimizer = torch.optim.Adam(self.parameters(), lr = self.lr, weight_decay = self.weight_decay)
 
        return optimizer
     

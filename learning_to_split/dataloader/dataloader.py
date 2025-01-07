@@ -24,25 +24,27 @@ class CustomedDataset(Dataset):
     def process(self, sample: Any) -> Any:
 
         # Pad the mz and intensities
-        mz, intensities, precursor_mz = sample.mz, sample.intensities, float(sample.metadata["precursor_mz"])
-        mz, intensities = sort_intensities(mz, intensities, precursor_mz)
+        peaks = sample["peaks"]
+        mz_o = [p["mz"] for p in peaks]
+        intensities_o = [p["intensity_norm"] for p in peaks]
+        precursor_mz = float(sample["precursor_MZ_final"])
+        mz, intensities = sort_intensities(mz_o, intensities_o, precursor_mz)
         mz, intensities = mz[:self.max_MS_peaks], intensities[:self.max_MS_peaks]
         pad_length = self.max_MS_peaks - len(mz)
         mz, intensities, mask = pad_mz_intensities(mz, intensities, pad_length)
 
         # Bin the MS 
-        binned_MS = bin_MS(sample.mz, sample.intensities, self.bin_resolution, self.max_da)
+        binned_MS = bin_MS(mz_o, intensities_o, self.bin_resolution, self.max_da)
 
-        # Geet the FP
-        FP = [float(c) for c in sample.metadata[self.FP_type]]
+        # Get the FP
+        FP = [float(c) for c in sample[self.FP_type]]
 
         return {"mz": torch.tensor(mz, dtype=torch.float),
                 "intensities": torch.tensor(intensities, dtype=torch.float),
                 "mask": torch.tensor(mask, dtype=torch.bool),
                 "binned_MS": torch.tensor(binned_MS, dtype = torch.float),
-                "adduct_idx": torch.tensor(int(sample.metadata["adduct_idx"]), dtype = torch.long),
-                "instrument_idx": torch.tensor(int(sample.metadata["instrument_idx"]), dtype = torch.long),
                 "FP": torch.tensor(FP, dtype = torch.float)}
+    
     def __len__(self):
         return len(self.data)
         
