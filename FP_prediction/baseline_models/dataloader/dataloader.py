@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 import pytorch_lightning as pl
 
-from utils import load_pickle, bin_MS, sort_intensities, pad_mz_intensities
+from utils import load_pickle, bin_MS, sort_intensities, pad_mz_intensities, process_formula
 
 class Data(object):
 
@@ -36,10 +36,13 @@ class MSDataset(pl.LightningDataModule):
                        FP_type: str = "morgan4_2028",
                        intensity_type: str = "raw",
                        intensity_threshold: float = 5.0,
+                       considered_atoms: List = ["C", "H", "O", "N"],
+                       mask_missing_formula: bool = False,
                        mode = "train"):
         
         super().__init__()
 
+        self.dir = dir
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
@@ -53,12 +56,14 @@ class MSDataset(pl.LightningDataModule):
         self.FP_type = FP_type
         self.intensity_type = intensity_type
         self.intensity_threshold = intensity_threshold
+        self.considered_atoms = considered_atoms
+        self.mask_mnissing_formula = mask_missing_formula
 
         # Get the data 
         if mode == "train":
-            train = [os.path.join(dir, train_folder, f) for f in os.listdir(os.path.join(dir, train_folder))]
-            val = [os.path.join(dir, val_folder, f) for f in os.listdir(os.path.join(dir, val_folder))]
-            test = [os.path.join(dir, test_folder, f) for f in os.listdir(os.path.join(dir, test_folder))]
+            train = [os.path.join(dir, train_folder, f) for f in os.listdir(os.path.join(dir, train_folder))][:200]
+            val = [os.path.join(dir, val_folder, f) for f in os.listdir(os.path.join(dir, val_folder))][:200]
+            test = [os.path.join(dir, test_folder, f) for f in os.listdir(os.path.join(dir, test_folder))][:200]
 
             # Prepare splits
             self._data = train + val + test
@@ -122,7 +127,7 @@ class MSDataset(pl.LightningDataModule):
         
         else:
             raise Exception(f"{self.intensity_type} not supported.")
-        
+
     def process(self, filepath: Any) -> Any:
 
         """Processes a single data sample"""
@@ -140,20 +145,47 @@ class MSDataset(pl.LightningDataModule):
         # Different ways to preprocess the intensity
         intensities_o = self._process_intensity(intensities_o)
 
-        # Pad the MZ and intensities
-        mz, intensities = sort_intensities(mz_o, intensities_o)
-        mz, intensities = mz[:self.max_MS_peaks], intensities[:self.max_MS_peaks]
-        pad_length = self.max_MS_peaks - len(mz)
-        mz, intensities, mask = pad_mz_intensities(mz, intensities, pad_length)
-    
-        # Get the binned MS
+        # Get the chemical formula
+        if "nist2023" in self.dir:
+            formula_o = [p["comment"]["f"] for p in peaks]
+
+            # Only keep the peaks with formula
+            mz_o = [mz_o[i] for i, f in enumerate(formula_o) if f != ""]
+            intensities_o = [intensities_o[i] for i, f in enumerate(formula_o) if f != ""]
+            formula_o = [f for f in formula_o if f != ""]
+
+        else:
+            formula_o = ["" for _ in mz_o]
+
+        # Sanity check 
+        if len(mz_o) != len(intensities_o) or len(mz_o) != len(formula_o):
+            raise Exception(f"Lengths do not match. mz: {len(mz_o)}, intensity: {len(intensities_o)}, formula: {len(formula_o)}")
+
+        # Get the neutral losses
+        # nl_o = [mz_o[0] - i for i in mz_o[1:]]
+        # mz_o = mz_o + nl_o
+        # intensities_o = intensities_o + intensities_o[1:]
+
+        # Sort the MZ, intensities and formula
+        mz, intensities, formula = sort_intensities(mz_o, intensities_o, formula_o)
+
+        # Get the binned MS 
         binned_MS = bin_MS(mz, intensities, self.bin_resolution, self.max_da)
+
+        # Get subset of the peaks for transformer network 
+        mz, intensities, formula = mz[:self.max_MS_peaks], intensities[:self.max_MS_peaks], formula[:self.max_MS_peaks]
+        pad_length = self.max_MS_peaks - len(mz)
+        mz, intensities, formula, mask = pad_mz_intensities(mz, intensities, formula, pad_length, mask_missing_formula = self.mask_mnissing_formula)
+
+        # Process the formula 
+        formula = [process_formula(f, self.considered_atoms) for f in formula]
     
         # Get the FP
         FP = [float(c) for c in sample[self.FP_type]]
 
         return {"mz": torch.tensor(mz, dtype=torch.float),
                 "intensities": torch.tensor(intensities, dtype=torch.float),
+                "formula": torch.tensor(formula, dtype=torch.float),
                 "mask": torch.tensor(mask, dtype=torch.bool),
                 "binned_MS": torch.tensor(binned_MS, dtype = torch.float),
                 "FP": torch.tensor(FP, dtype = torch.float)}

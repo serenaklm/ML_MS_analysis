@@ -1,3 +1,4 @@
+import re
 import math
 import copy 
 import yaml
@@ -27,38 +28,69 @@ def read_config(path):
 
     return config
 
-def filter_intensities(mz, intensities):
-    mz_f, intensities_f = [],[]
-    for m, i in zip(mz, intensities):
+def filter_intensities(mz, intensities, formula):
+    mz_f, intensities_f, formula_f = [],[],[]
+    for m, i,f in zip(mz, intensities, formula):
         if i > 0.0:
             mz_f.append(m)
             intensities_f.append(i)
+            formula_f.append(f)
 
-    return mz_f, intensities_f
+    return mz_f, intensities_f, formula_f
 
-def sort_intensities(mz, intensities):
+def sort_intensities(mz, intensities, formula):
 
     # Filter the mz and intensities
-    mz, intensities = filter_intensities(mz, intensities)
+    mz, intensities, formula = filter_intensities(mz, intensities, formula)
 
     # Sort by intensities
     order = np.argsort(intensities)[::-1]
     mz = [mz[i] for i in order]
-    intensities = [intensities[i] for i  in order]
+    intensities = [intensities[i] for i in order]
+    formula = [formula[i] for i in order]
 
-    return mz, intensities
+    return mz, intensities, formula
 
-def pad_mz_intensities(mz, intensities, pad_length, mz_pad = 0, intensities_pad = 0):
+def pad_mz_intensities(mz, intensities, formula, pad_length, mz_pad = 0, intensities_pad = 0, mask_missing_formula = False):
 
     length = len(mz)
     mz = mz + [mz_pad for _ in range(pad_length)]
     intensities = intensities + [intensities_pad for _ in range(pad_length)]
-    mask = [1 for _ in range(length)] + [0 for _ in range(pad_length)]
+    formula = formula + ["[PAD]" for _ in range(pad_length)]
+    mask = [False for _ in range(length)] + [True for _ in range(pad_length)]
 
-    assert len(mz) == len(intensities)
+    
+    if mask_missing_formula: 
+        mask = [m == "[PAD]" or m == "" for m in formula]
+    
+    assert len(mz) == len(mask)
     assert len(intensities) == len(mask)
+    assert len(formula) == len(mask)
 
-    return mz, intensities, mask
+    return mz, intensities, formula, mask
+
+def process_formula(formula, considered_atoms):
+
+    # Split the formula on '+' signs. E.g., "C23H27ClNaO5+i" -> ["C23H27ClNaO5", "i"]
+    parts = formula.split('+')
+    
+    # Regex to capture typical element symbols: capital letter followed by optional lowercase letters,
+    # plus an optional digit count.
+    element_pattern = re.compile(r'([A-Z][a-z]*)(\d*)')
+    
+    element_counts = [0 for _ in considered_atoms]
+
+    for part in parts:
+
+        matches = element_pattern.findall(part)
+
+        # Accumulate counts from the standard pattern
+        for (element, count_str) in matches:
+            count = int(count_str) if count_str else 1
+            if element in considered_atoms:
+                element_counts[considered_atoms.index(element)] += count
+    
+    return element_counts
 
 # For proccessing of MS data 
 def get_all_spectra(path):

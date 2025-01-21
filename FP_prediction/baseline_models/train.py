@@ -15,7 +15,7 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 from utils import read_config
 from dataloader import MSDataset
-from modules import MSBinnedModel, MSTransformerEncoder
+from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder
 
 @rank_zero_only
 def write_config(wandb_logger, config):
@@ -33,6 +33,11 @@ def write_config_local(config, config_out_path):
     with open(config_out_path, "w") as f:
         yaml.dump(config, f)
 
+@rank_zero_only
+def create_results_dir(results_dir):
+
+    if not os.path.exists(results_dir): os.makedirs(results_dir)
+
 def update_config(config):
     
     devices = config["trainer"].get("devices", 1)
@@ -43,22 +48,41 @@ def update_config(config):
         config["trainer"].update(devices=devices)
         config["data"]["num_workers"] = 0
 
+    config["trainer"]["val_check_interval"] = config["trainer"]["log_every_n_steps"] - 1
+
     if devices > 1:
         config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=False))
 
     if args.disable_checkpoint:
         config["trainer"]["enable_checkpointing"] = False
-    
-    # Set output folder
-    current_time = datetime.now().strftime("%m-%d-%Y-%H-%M")
-    results_dir = os.path.join(config["args"]["results_dir"], config["model"]["name"], current_time)
-    config["args"]["results_dir"] = results_dir
-    config["trainer"].update(default_root_dir = config["args"]["results_dir"])
+
+    # Copy the configurations for vanilla transformer for formula transformer
+    config["model"]["formula_encoder"] = config["model"]["MS_encoder"]
 
     # Update the input_dim 
     input_dim = int(config["data"]["max_da"] / config["data"]["bin_resolution"])
     config["model"]["binned_MS_encoder"]["input_dim"] = input_dim
     config["model"]["MS_encoder"]["input_dim"] = input_dim
+    config["model"]["formula_encoder"]["input_dim"] = input_dim
+
+    # Update the number of considered atoms (only for formula encoder)
+    config["model"]["formula_encoder"]["n_atoms"] = len(config["data"]["considered_atoms"])
+
+    # Set mask missing formula to be true (only formula encoder)
+    if config["model"]["name"] == "formula_encoder":
+        config["data"]["mask_missing_formula"] = True
+
+    # Update the positive weight
+    pos_weight = int(config["model"]["train_params"]["pos_weight"])
+    config["model"]["binned_MS_encoder"]["pos_weight"] = pos_weight
+    config["model"]["MS_encoder"]["pos_weight"] = pos_weight
+    config["model"]["formula_encoder"]["pos_weight"] = pos_weight
+
+    # Update the reconstruction weight 
+    reconstruction_weight = float(config["model"]["train_params"]["reconstruction_weight"]) 
+    config["model"]["binned_MS_encoder"]["reconstruction_weight"] = reconstruction_weight
+    config["model"]["MS_encoder"]["reconstruction_weight"] = reconstruction_weight
+    config["model"]["formula_encoder"]["reconstruction_weight"] = reconstruction_weight
 
     # Update the output_dim 
     FP_dim_mapping = {"morgan4_256": 256,
@@ -71,8 +95,10 @@ def update_config(config):
                       "morgan6_4096": 4096}
 
     if config["data"]["FP_type"] not in FP_dim_mapping: raise ValueError(f"FP type selected not supported.")
-    config["model"]["binned_MS_encoder"]["input_dim"] = input_dim
+    
     config["model"]["binned_MS_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
+    config["model"]["MS_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
+    config["model"]["formula_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
 
     return config
 
@@ -81,36 +107,44 @@ def train(config):
     # Set a random seed 
     seed_everything(config["seed"])
 
-    # Write the config here
-    config_o = read_config(os.path.join(config["args"]["config_dir"], config["args"]["config_file"]))
-    expt_name = config["args"]["results_dir"].split("/")[-1]
-    config_o["exp_name"] = expt_name
-    write_config_local(config_o, os.path.join(config["args"]["results_dir"], "run.yaml"))
+    # Update the results directory 
+    results_dir = os.path.join(config["args"]["results_dir"], config["model"]["name"])
+    expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    results_dir = os.path.join(results_dir, expt_name)
+    create_results_dir(results_dir)
 
     # Get the wandb logger 
     wandb_logger = None 
     if not config["args"]["debug"] and config["args"]["wandb"]:
         wandb_logger = WandbLogger(project = config["project"],
                                    config = config,
-                                   name = expt_name,
                                    group = config["args"]["config_file"].replace(".yaml", ""),
                                    entity = config["args"]["user"],
+                                   name = expt_name,
                                    log_model = False)
         
         # Dump config
         raw_config = copy.deepcopy(config)
         del raw_config["args"]
         write_config(wandb_logger, raw_config)
-        
+
+    # Write the config here
+    config_o = read_config(os.path.join(config["args"]["config_dir"], config["args"]["config_file"]))
+    config_o["exp_name"] = expt_name
+    write_config_local(config_o, os.path.join(results_dir, "run.yaml"))
+
+    # Set output folder
+    config["trainer"].update(default_root_dir = results_dir)
+
     # Get dataset
     dataset = MSDataset(**config["data"])
     dataset.prepare_data()
     dataset.setup()
 
     # Get trainer and logger
-    checkpoint_callback = ModelCheckpoint(monitor="val/loss",
-                                          dirpath = config["args"]["results_dir"],
-                                          filename = '{epoch:02d}-{val/loss:.2f}',
+    checkpoint_callback = ModelCheckpoint(monitor="val_average_loss",
+                                          dirpath = results_dir,
+                                          filename = '{epoch:02d}-{val_average_loss:.3f}',
                                           every_n_train_steps = config["trainer"]["log_every_n_steps"], 
                                           save_top_k = 2, mode = "min")
 
@@ -124,7 +158,9 @@ def train(config):
     elif model_name == "MS_encoder":
         model = MSTransformerEncoder(**config["model"]["MS_encoder"], lr = config["model"]["train_params"]["lr"], 
                                                                       weight_decay = config["model"]["train_params"]["weight_decay"])
-
+    elif model_name == "formula_encoder":
+        model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["model"]["train_params"]["lr"], 
+                                                                                weight_decay = config["model"]["train_params"]["weight_decay"])
     else:
         raise Exception(f"{model_name} not supported.")
     
@@ -144,7 +180,7 @@ if __name__ == "__main__":
     parser.add_argument("--user", type = str, default = "serenakhoolm", help = "Set the user")
 
     args = parser.parse_args()
-    
+
     # Set torch hub cache
     torch.hub.set_dir(args.torch_hub_cache)
 
@@ -157,9 +193,6 @@ if __name__ == "__main__":
     # Update the trainer config
     config["args"] = args.__dict__
     config = update_config(config)
-
-    # Get the results folder 
-    if not os.path.exists(config["args"]["results_dir"]): os.makedirs(config["args"]["results_dir"])
 
     # Run the trainer now 
     train(config)
