@@ -90,6 +90,7 @@ class MSBinnedModel(pl.LightningModule):
 
         # Forward pass
         FP_pred, binned_ms_pred = self(binned_ms)
+        print("Train", FP_pred)
 
         # Compute the FP prediction loss 
         FP_loss = self.compute_loss(FP_pred, FP)
@@ -117,6 +118,7 @@ class MSBinnedModel(pl.LightningModule):
 
         # Forward pass
         FP_pred, binned_ms_pred = self(binned_ms)
+        print("Val", FP_pred)
 
         # Compute the FP prediction loss 
         FP_loss = self.compute_loss(FP_pred, FP)

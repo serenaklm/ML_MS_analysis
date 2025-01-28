@@ -61,9 +61,9 @@ class MSDataset(pl.LightningDataModule):
 
         # Get the data 
         if mode == "train":
-            train = [os.path.join(dir, train_folder, f) for f in os.listdir(os.path.join(dir, train_folder))][:200]
-            val = [os.path.join(dir, val_folder, f) for f in os.listdir(os.path.join(dir, val_folder))][:200]
-            test = [os.path.join(dir, test_folder, f) for f in os.listdir(os.path.join(dir, test_folder))][:200]
+            train = [os.path.join(dir, train_folder, f) for f in os.listdir(os.path.join(dir, train_folder))]
+            val = [os.path.join(dir, val_folder, f) for f in os.listdir(os.path.join(dir, val_folder))]
+            test = [os.path.join(dir, test_folder, f) for f in os.listdir(os.path.join(dir, test_folder))]
 
             # Prepare splits
             self._data = train + val + test
