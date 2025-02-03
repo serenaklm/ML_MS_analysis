@@ -8,6 +8,8 @@ import numpy as np
 from tqdm import tqdm
 from matchms.importing import load_from_mgf, load_from_msp
 
+import torch 
+
 def load_pickle(path):
     with open(path, "rb") as f:
         return pickle.load(f)
@@ -58,7 +60,6 @@ def pad_mz_intensities(mz, intensities, formula, pad_length, mz_pad = 0, intensi
     intensities = intensities + [intensities_pad for _ in range(pad_length)]
     formula = formula + ["[PAD]" for _ in range(pad_length)]
     mask = [False for _ in range(length)] + [True for _ in range(pad_length)]
-
     
     if mask_missing_formula: 
         mask = [m == "[PAD]" or m == "" for m in formula]
@@ -91,6 +92,16 @@ def process_formula(formula, considered_atoms):
                 element_counts[considered_atoms.index(element)] += count
     
     return element_counts
+
+def custom_collate_func(batch):
+
+    # Filter out any None in the batch
+    filtered_batch = [s for s in batch if s is not None]
+
+    if len(filtered_batch) == 0:
+        return None
+
+    return torch.utils.data.dataloader.default_collate(filtered_batch)
 
 # For proccessing of MS data 
 def get_all_spectra(path):

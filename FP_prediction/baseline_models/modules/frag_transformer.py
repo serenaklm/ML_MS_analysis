@@ -33,7 +33,7 @@ class LearnableFourierFeatures(nn.Module):
 
         return emb
 
-class MSTransformerEncoder(pl.LightningModule):
+class FragTransformerEncoder(pl.LightningModule):
     
     def __init__(self, lr: float = 1e-4,
                        weight_decay: float = 0.10, 
@@ -45,7 +45,8 @@ class MSTransformerEncoder(pl.LightningModule):
                        output_dim: int = 2048,
                        pos_weight: float = 1.0,
                        reconstruction_weight: float = 1.0,
-                       dropout_rate: float = 0.2):
+                       dropout_rate: float = 0.2,
+                       chemberta_model: str = ""):
         
         super().__init__()
         self.save_hyperparameters()
@@ -63,12 +64,13 @@ class MSTransformerEncoder(pl.LightningModule):
         self.avg_loss_train, self.avg_loss_val = [], []
 
         # Get all the encoders
-        self.mz_encoder = LearnableFourierFeatures(1, model_dim, hidden_dim, model_dim)
+
+        
         self.intensity_encoder = LearnableFourierFeatures(1, model_dim, hidden_dim, model_dim)
         self.peaks_encoder = nn.Sequential(nn.Linear(model_dim * 2, hidden_dim),
                                            nn.GELU(),
                                            nn.Linear(hidden_dim, model_dim))
-
+        
         encoder_layer = nn.TransformerEncoderLayer(d_model = model_dim, nhead = n_heads, batch_first = True)
         self.MS_encoder = nn.TransformerEncoder(encoder_layer, num_layers = n_layers)
 
@@ -93,16 +95,16 @@ class MSTransformerEncoder(pl.LightningModule):
                                                        nn.GELU(),
                                                        nn.Dropout(dropout_rate),
                                                        nn.Linear(hidden_dim, input_dim))
+        
+    def forward(self, intensities, formula, mask, binned_ms):
 
-    def forward(self, mz, intensities, mask, binned_ms):
-
-        # Get binned MS embeddings
+        # Get binned MS emb
         binned_ms_emb = self.binned_ms_encoder(binned_ms)
         
-        # Get fourier features for all peaks in the MS 
-        mz_emb = self.mz_encoder(mz[:, :, None])
+        # Get features for the MS 
+        formula_emb = self.formula_encoder(formula)
         intensities_emb = self.intensity_encoder(intensities[:, :, None])
-        peaks_emb = self.peaks_encoder(torch.concat([mz_emb, intensities_emb], dim = -1))
+        peaks_emb = self.peaks_encoder(torch.concat([formula_emb, intensities_emb], dim = -1))
 
         # Encode with transformer 
         # True are not allowed to attend while False values will be unchanged.
@@ -114,11 +116,9 @@ class MSTransformerEncoder(pl.LightningModule):
 
         # Get the FP prediction 
         FP_pred = self.pred_layer(feats)
-        print(FP_pred)
- 
+
         # Get the reconstruction prediction
         binned_ms_pred = self.reconstruction_pred_layer(feats)
-        print(binned_ms_pred)
 
         return FP_pred, binned_ms_pred 
 
@@ -141,12 +141,12 @@ class MSTransformerEncoder(pl.LightningModule):
     def training_step(self, batch, batch_idx):
 
         # Unpack the batch 
-        mz, intensities, mask = batch["mz"], batch["intensities"], batch["mask"]
+        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
         # Forward pass
-        FP_pred, binned_ms_pred = self(mz, intensities, mask, binned_ms)
+        FP_pred, binned_ms_pred = self(intensities, formula, mask, binned_ms)
 
         # Compute the FP prediction loss 
         FP_loss = self.compute_loss(FP_pred, FP)
@@ -169,12 +169,12 @@ class MSTransformerEncoder(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
 
         # Unpack the batch 
-        mz, intensities, mask = batch["mz"], batch["intensities"], batch["mask"]
+        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
         # Forward pass
-        FP_pred, binned_ms_pred = self(mz, intensities, mask, binned_ms)
+        FP_pred, binned_ms_pred = self(intensities, formula, mask, binned_ms)
 
         # Compute the FP prediction loss 
         FP_loss = self.compute_loss(FP_pred, FP)

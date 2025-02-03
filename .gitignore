@@ -4,3 +4,6 @@
 **/DreaMS/*
 **/wandb/*
 **/cache/*
+**/results_cache/*
+**/massformer/*
+**/torch-influence/*

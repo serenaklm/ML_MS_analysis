@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 import pytorch_lightning as pl
 
-from utils import load_pickle, bin_MS, sort_intensities, pad_mz_intensities, process_formula
+from utils import load_pickle, bin_MS, sort_intensities, pad_mz_intensities, process_formula, custom_collate_func
 
 class Data(object):
 
@@ -57,7 +57,7 @@ class MSDataset(pl.LightningDataModule):
         self.intensity_type = intensity_type
         self.intensity_threshold = intensity_threshold
         self.considered_atoms = considered_atoms
-        self.mask_mnissing_formula = mask_missing_formula
+        self.mask_missing_formula = mask_missing_formula
 
         # Get the data 
         if mode == "train":
@@ -133,6 +133,9 @@ class MSDataset(pl.LightningDataModule):
         """Processes a single data sample"""
         sample = load_pickle(filepath)
 
+        # Get the id_ 
+        id_ = sample["spectrum_id"]
+
         # Get the mz and intensities
         peaks = sample["peaks"]
         mz_o = [float(p["mz"]) for p in peaks]
@@ -147,12 +150,7 @@ class MSDataset(pl.LightningDataModule):
 
         # Get the chemical formula
         if "nist2023" in self.dir:
-            formula_o = [p["comment"]["f"] for p in peaks]
-
-            # Only keep the peaks with formula
-            mz_o = [mz_o[i] for i, f in enumerate(formula_o) if f != ""]
-            intensities_o = [intensities_o[i] for i, f in enumerate(formula_o) if f != ""]
-            formula_o = [f for f in formula_o if f != ""]
+            formula_o = [sample["formula"]] + [p["comment"]["f"] for p in peaks]
 
         else:
             formula_o = ["" for _ in mz_o]
@@ -175,7 +173,11 @@ class MSDataset(pl.LightningDataModule):
         # Get subset of the peaks for transformer network 
         mz, intensities, formula = mz[:self.max_MS_peaks], intensities[:self.max_MS_peaks], formula[:self.max_MS_peaks]
         pad_length = self.max_MS_peaks - len(mz)
-        mz, intensities, formula, mask = pad_mz_intensities(mz, intensities, formula, pad_length, mask_missing_formula = self.mask_mnissing_formula)
+        mz, intensities, formula, mask = pad_mz_intensities(mz, intensities, formula, pad_length, mask_missing_formula = self.mask_missing_formula)
+
+        # Skip processing some records
+        if sum(mask) == len(mask) or sum(binned_MS) == 0.0: 
+            return None
 
         # Process the formula 
         formula = [process_formula(f, self.considered_atoms) for f in formula]
@@ -183,19 +185,26 @@ class MSDataset(pl.LightningDataModule):
         # Get the FP
         FP = [float(c) for c in sample[self.FP_type]]
 
-        return {"mz": torch.tensor(mz, dtype=torch.float),
+        return {"id_" : id_,
+                "mz": torch.tensor(mz, dtype=torch.float),
                 "intensities": torch.tensor(intensities, dtype=torch.float),
                 "formula": torch.tensor(formula, dtype=torch.float),
                 "mask": torch.tensor(mask, dtype=torch.bool),
                 "binned_MS": torch.tensor(binned_MS, dtype = torch.float),
                 "FP": torch.tensor(FP, dtype = torch.float)}
+
+
         
+        # Otherwise, collate as usual:
+        return DataLoader.default_collate(filtered_batch)
+
     def train_dataloader(self):
         train_data = Data(self.train_data, self.process)
         train_data_loader = DataLoader(train_data,
                                         num_workers = self.num_workers,
                                         pin_memory = self.pin_memory,
                                         batch_size = self.batch_size,
+                                        collate_fn = custom_collate_func,
                                         shuffle=True)
 
         return train_data_loader
@@ -206,6 +215,7 @@ class MSDataset(pl.LightningDataModule):
                                     num_workers = self.num_workers,
                                     pin_memory = self.pin_memory,
                                     batch_size = self.batch_size,
+                                    collate_fn = custom_collate_func,
                                     shuffle=False)
 
         return val_data_loader
@@ -216,6 +226,7 @@ class MSDataset(pl.LightningDataModule):
                                     num_workers = self.num_workers,
                                     pin_memory = self.pin_memory,
                                     batch_size = self.batch_size,
+                                    collate_fn = custom_collate_func,
                                     shuffle=False)
 
         return test_data_loader

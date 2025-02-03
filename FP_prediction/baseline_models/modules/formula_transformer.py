@@ -67,6 +67,7 @@ class FormulaTransformerEncoder(pl.LightningModule):
         self.formula_encoder = nn.Sequential(nn.Linear(n_atoms, hidden_dim),
                                              nn.GELU(),
                                              nn.Linear(hidden_dim, model_dim))
+        
         self.intensity_encoder = LearnableFourierFeatures(1, model_dim, hidden_dim, model_dim)
         self.peaks_encoder = nn.Sequential(nn.Linear(model_dim * 2, hidden_dim),
                                            nn.GELU(),

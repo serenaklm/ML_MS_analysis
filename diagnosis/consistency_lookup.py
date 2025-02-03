@@ -112,7 +112,7 @@ def get_lookup_performance(data, data_by_experimental_conditions, greedy_cs):
             
         id_ = rec.metadata["identifier"]
         formula = rec.metadata["formula"]
-        inchikey = rec.metadata["inchikey"]
+        inchikey = rec.metadata["inchikey"][:14]
         
         adduct = rec.metadata["adduct"]
         instrument = rec.metadata["instrument_type"]
@@ -122,7 +122,7 @@ def get_lookup_performance(data, data_by_experimental_conditions, greedy_cs):
 
         cand_list = data_by_experimental_conditions[formula][instrument][adduct][energy]
         cand_list = [c for c in cand_list if c.metadata["identifier"] != id_]
-        cand_inchikey = [c.metadata["inchikey"] for c in cand_list]
+        cand_inchikey = [c.metadata["inchikey"][:14] for c in cand_list]
         
         # Skip if there are no candidates 
         if len(cand_list) == 0: continue
@@ -165,7 +165,6 @@ def get_recall_at_k(all_ranks):
         recall_at_k.append(len([r for r in all_ranks if r <= k])/ total * 100)
 
     return recall_at_k
-
 
 if __name__ == "__main__":
 
@@ -311,5 +310,5 @@ if __name__ == "__main__":
     plt.legend()
 
     # Show the plot
-    plt.show()
     plt.savefig(os.path.join(output_folder, "recall_at_k.png"))
+    plt.show()

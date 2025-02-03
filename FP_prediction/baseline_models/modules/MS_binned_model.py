@@ -84,6 +84,8 @@ class MSBinnedModel(pl.LightningModule):
     
     def training_step(self, batch, batch_idx):
 
+        if batch is None: return None
+
         # Unpack the batch 
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
@@ -111,6 +113,8 @@ class MSBinnedModel(pl.LightningModule):
         return loss 
 
     def validation_step(self, batch, batch_idx):
+
+        if batch is None: return None
 
         # Unpack the batch 
         binned_ms = batch["binned_MS"]

@@ -15,7 +15,7 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 from utils import read_config
 from dataloader import MSDataset
-from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder
+from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder, FragTransformerEncoder
 
 @rank_zero_only
 def write_config(wandb_logger, config):
@@ -57,13 +57,17 @@ def update_config(config):
         config["trainer"]["enable_checkpointing"] = False
 
     # Copy the configurations for vanilla transformer for formula transformer
-    config["model"]["formula_encoder"] = config["model"]["MS_encoder"]
+    config["model"]["formula_encoder"] = copy.deepcopy(config["model"]["MS_encoder"])
+
+    # Copy the configuration for vanilla transformer for frag transformer 
+    config["model"]["frag_encoder"] = {**config["model"]["frag_encoder"] , **copy.deepcopy(config["model"]["MS_encoder"])}
 
     # Update the input_dim 
     input_dim = int(config["data"]["max_da"] / config["data"]["bin_resolution"])
     config["model"]["binned_MS_encoder"]["input_dim"] = input_dim
     config["model"]["MS_encoder"]["input_dim"] = input_dim
     config["model"]["formula_encoder"]["input_dim"] = input_dim
+    config["model"]["frag_encoder"]["input_dim"] = input_dim
 
     # Update the number of considered atoms (only for formula encoder)
     config["model"]["formula_encoder"]["n_atoms"] = len(config["data"]["considered_atoms"])
@@ -72,17 +76,23 @@ def update_config(config):
     if config["model"]["name"] == "formula_encoder":
         config["data"]["mask_missing_formula"] = True
 
+    # Set mask missing frag to be true (only frag encoder)
+    if config["model"]["name"] == "frag_encoder":
+        config["data"]["mask_missing_frag"] = True
+
     # Update the positive weight
     pos_weight = int(config["model"]["train_params"]["pos_weight"])
     config["model"]["binned_MS_encoder"]["pos_weight"] = pos_weight
     config["model"]["MS_encoder"]["pos_weight"] = pos_weight
     config["model"]["formula_encoder"]["pos_weight"] = pos_weight
+    config["model"]["frag_encoder"]["pos_weight"] = pos_weight
 
     # Update the reconstruction weight 
     reconstruction_weight = float(config["model"]["train_params"]["reconstruction_weight"]) 
     config["model"]["binned_MS_encoder"]["reconstruction_weight"] = reconstruction_weight
     config["model"]["MS_encoder"]["reconstruction_weight"] = reconstruction_weight
     config["model"]["formula_encoder"]["reconstruction_weight"] = reconstruction_weight
+    config["model"]["frag_encoder"]["reconstruction_weight"] = reconstruction_weight
 
     # Update the output_dim 
     FP_dim_mapping = {"morgan4_256": 256,
@@ -92,13 +102,15 @@ def update_config(config):
                       "morgan6_256": 256,
                       "morgan6_1024": 1024, 
                       "morgan6_2048": 2048,
-                      "morgan6_4096": 4096}
+                      "morgan6_4096": 4096,
+                      "morgan_r_2_top_df_200" : 200}
 
     if config["data"]["FP_type"] not in FP_dim_mapping: raise ValueError(f"FP type selected not supported.")
     
     config["model"]["binned_MS_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
     config["model"]["MS_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
     config["model"]["formula_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
+    config["model"]["frag_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
 
     return config
 
@@ -161,6 +173,9 @@ def train(config):
     elif model_name == "formula_encoder":
         model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["model"]["train_params"]["lr"], 
                                                                                 weight_decay = config["model"]["train_params"]["weight_decay"])
+    elif model_name == "frag_encoder":
+        model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["model"]["train_params"]["lr"], 
+                                                                                weight_decay = config["model"]["train_params"]["weight_decay"])    
     else:
         raise Exception(f"{model_name} not supported.")
     

@@ -33,21 +33,20 @@ def batch_jaccard_index(FP_pred, FP):
 @torch.no_grad()
 def predict(model, config, device, batch_size):
 
-    bin_resolution = config["data"]["bin_resolution"]
-    max_da = config["data"]["max_da"]
-    FP_type = config["data"]["FP_type"]
-
     dataset = MSDataset(dir = config["data"]["dir"],
                         test_folder = config["data"]["test_folder"],
                         batch_size = batch_size,
-                        bin_resolution = bin_resolution,
-                        max_da = max_da, 
-                        FP_type = FP_type,
+                        max_da = config["data"]["max_da"], 
+                        max_MS_peaks = config["data"]["max_MS_peaks"],
+                        bin_resolution = config["data"]["bin_resolution"], 
+                        FP_type = config["data"]["FP_type"],
                         num_workers = 4, 
-                        intensity_type = "", 
-                        intensity_threshold = 0.0,
+                        intensity_type = config["data"]["intensity_type"], 
+                        intensity_threshold = config["data"]["intensity_threshold"],
+                        considered_atoms = config["data"]["considered_atoms"],
+                        mask_missing_formula = config["data"]["considered_atoms"],
                         mode = "inference")
-    
+
     data_loader = dataset.test_dataloader()
     
     # Run model predictions
@@ -62,7 +61,8 @@ def predict(model, config, device, batch_size):
         FP = batch["FP"]
 
         # Forward pass
-        FP_pred = model(binned_ms).cpu()
+        FP_pred, _ = model(binned_ms)
+        FP_pred = FP_pred.cpu()
 
         # Get the loss 
         total_loss += get_loss(FP_pred, FP).item() * FP_pred.size(0)
@@ -87,6 +87,20 @@ def predict(model, config, device, batch_size):
 
     return predictions, avg_loss, avg_jaccard
 
+def get_checkpoint_path(folder):
+
+    checkpoints = [f for f in os.listdir(folder) if f.endswith(".ckpt")]
+    best_checkpoint, lowest_loss = "", 1e4
+
+    for c in checkpoints:
+
+        loss = float(c.replace(".ckpt", "").split("=")[-1]) # hack 
+        if loss < lowest_loss:
+            lowest_loss = loss 
+            best_checkpoint = c 
+    
+    return os.path.join(folder, best_checkpoint)
+
 def main(args):
 
     # Get the checkpoint and config
@@ -94,7 +108,7 @@ def main(args):
     config = read_config(os.path.join(checkpoint_dir, "run.yaml"))
 
     # Load the model 
-    model = MSBinnedModel.load_from_checkpoint(os.path.join(checkpoint_dir, "model.ckpt"))
+    model = MSBinnedModel.load_from_checkpoint(get_checkpoint_path(checkpoint_dir))
     model.eval()
     model.to(args.device)
 
@@ -116,12 +130,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Manually add in (hack)
-    folder = "./results/"
-    all_folders = [os.path.join(folder, f) for f in os.listdir(folder)]
+    folder = "./results_cache/"
+    all_folders = []
+    
+    for model in os.listdir(folder):
+        subfolder = os.path.join(folder, model)
+        for checkpoint in os.listdir(subfolder):
+            all_folders.append(os.path.join(subfolder, checkpoint))
 
-    for idx, f1 in enumerate(all_folders):    
-        all_folders[idx] = os.path.join(f1, [f for f in os.listdir(f1)][0])
-        
     for f in all_folders:
 
         args.checkpoint = f
