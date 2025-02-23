@@ -1,13 +1,15 @@
 import os
-import sys
+import numpy as np
 from typing import Any, Callable, List
 
 import torch
+import pytorch_lightning as pl
+from transformers import AutoTokenizer
 from torch.utils.data import DataLoader
 
-import pytorch_lightning as pl
-
-from utils import load_pickle, bin_MS, sort_intensities, pad_mz_intensities, process_formula, custom_collate_func
+from utils import load_pickle, bin_MS, sort_intensities, pad_mz_intensities, \
+                  process_formula, filter_candidates, pad_missing_cand, pad_missing_cand_weight, \
+                  tokenize_frags
 
 class Data(object):
 
@@ -33,12 +35,16 @@ class MSDataset(pl.LightningDataModule):
                        max_da: int = 1000,
                        max_MS_peaks: int = 100,
                        bin_resolution: float = 0.1, 
-                       FP_type: str = "morgan4_2028",
+                       FP_type: str = "morgan4_2048",
                        intensity_type: str = "raw",
                        intensity_threshold: float = 5.0,
                        considered_atoms: List = ["C", "H", "O", "N"],
-                       mask_missing_formula: bool = False,
-                       mode = "train"):
+                       n_frag_candidates: int = 5,
+                       chemberta_model: str = "",
+                       mode = "train",
+                       return_id_: bool = False,
+                       get_CF: bool = False,
+                       get_frags: bool = False):
         
         super().__init__()
 
@@ -57,7 +63,10 @@ class MSDataset(pl.LightningDataModule):
         self.intensity_type = intensity_type
         self.intensity_threshold = intensity_threshold
         self.considered_atoms = considered_atoms
-        self.mask_missing_formula = mask_missing_formula
+        self.n_frag_candidates = n_frag_candidates
+        self.return_id_ = return_id_
+        self.get_CF = get_CF
+        self.get_frags = get_frags
 
         # Get the data 
         if mode == "train":
@@ -87,6 +96,11 @@ class MSDataset(pl.LightningDataModule):
 
             print("Test length: ", len(self._test))
 
+        # Load in the tokenizer 
+        self.tokenizer = None
+        if self.get_frags:           
+            self.tokenizer = AutoTokenizer.from_pretrained(chemberta_model)
+ 
     @property
     def train_data(self) -> List:
         """The validation data."""
@@ -111,6 +125,7 @@ class MSDataset(pl.LightningDataModule):
         pass
 
     def _process_intensity(self, intensities_o):
+
         """Prepares the intensity vector"""
 
         if self.intensity_type == "raw": 
@@ -134,7 +149,7 @@ class MSDataset(pl.LightningDataModule):
         sample = load_pickle(filepath)
 
         # Get the id_ 
-        id_ = sample["spectrum_id"]
+        id_ = sample["id_"]
 
         # Get the mz and intensities
         peaks = sample["peaks"]
@@ -142,69 +157,89 @@ class MSDataset(pl.LightningDataModule):
         intensities_o = [float(p["intensity_norm"]) for p in peaks]
 
         # Add in the precursor_mz in the list of peaks 
-        mz_o = [float(sample["precursor_MZ_final_corrected"])] + mz_o
+        mz_o = [float(sample["precursor_MZ_final"])] + mz_o
         intensities_o = [100.1] + intensities_o # So that the precursor peak is always at the front
+        intensities_o = self._process_intensity(intensities_o) # Process the intensity differently
 
-        # Different ways to preprocess the intensity
-        intensities_o = self._process_intensity(intensities_o)
+        formula_o, frags_o = None, None
 
-        # Get the chemical formula
-        if "nist2023" in self.dir:
-            formula_o = [sample["formula"]] + [p["comment"]["f"] for p in peaks]
+        # Get the chemical formula if self.get_CF == True
+        if self.get_CF:
 
-        else:
-            formula_o = ["" for _ in mz_o]
+            if "nist2023" in self.dir:
+                formula_o = [sample["formula"]] + [p["comment"]["f"] for p in peaks]
+
+            else:
+                formula_o = [sample["formula"]] + [p["comment"]["f_pred"] for p in peaks]
+
+        # Get possible frags if self.get_frags == True
+        if self.get_frags:
+            
+            frags_o = [(pad_missing_cand(self.n_frag_candidates), pad_missing_cand_weight(self.n_frag_candidates))] + \
+                      [filter_candidates(p["comment"]["possible_frags"], self.n_frag_candidates) for p in peaks]
 
         # Sanity check 
-        if len(mz_o) != len(intensities_o) or len(mz_o) != len(formula_o):
-            raise Exception(f"Lengths do not match. mz: {len(mz_o)}, intensity: {len(intensities_o)}, formula: {len(formula_o)}")
+        if len(mz_o) != len(intensities_o):
+            raise Exception(f"Lengths do not match. mz: {len(mz_o)}, intensity: {len(intensities_o)}")
+        if formula_o is not None and len(mz_o) != len(formula_o):
+            raise Exception(f"Lengths do not match. mz: {len(mz_o)}, formula: {len(formula_o)}")
+        if frags_o is not None and len(mz_o) != len(frags_o):
+            raise Exception(f"Lengths do not match. mz: {len(mz_o)}, frags: {len(frags_o)}")
 
-        # Get the neutral losses
-        # nl_o = [mz_o[0] - i for i in mz_o[1:]]
-        # mz_o = mz_o + nl_o
-        # intensities_o = intensities_o + intensities_o[1:]
-
-        # Sort the MZ, intensities and formula
-        mz, intensities, formula = sort_intensities(mz_o, intensities_o, formula_o)
+        # Sort the MZ, intensities, formula and frags
+        mz, intensities, formula, frags_smiles, frags_weight = sort_intensities(mz_o, intensities_o, formula_o, frags_o)
 
         # Get the binned MS 
         binned_MS = bin_MS(mz, intensities, self.bin_resolution, self.max_da)
 
         # Get subset of the peaks for transformer network 
-        mz, intensities, formula = mz[:self.max_MS_peaks], intensities[:self.max_MS_peaks], formula[:self.max_MS_peaks]
+        mz = mz[:self.max_MS_peaks]
+        intensities = intensities[:self.max_MS_peaks]
+        if formula is not None: formula = formula[:self.max_MS_peaks]
+        if frags_smiles is not None: frags_smiles = frags_smiles[:self.max_MS_peaks]
+        if frags_weight is not None: frags_weight = frags_weight[:self.max_MS_peaks]
         pad_length = self.max_MS_peaks - len(mz)
-        mz, intensities, formula, mask = pad_mz_intensities(mz, intensities, formula, pad_length, mask_missing_formula = self.mask_missing_formula)
+
+        output = pad_mz_intensities(mz, intensities, formula, frags_smiles, frags_weight, 
+                                    pad_length, n_cands = self.n_frag_candidates)
+        
+        mz, intensities, formula, frags_smiles, frags_weight, mask = output
 
         # Skip processing some records
-        if sum(mask) == len(mask) or sum(binned_MS) == 0.0: 
-            return None
+        assert sum(mask) != len(mask) and sum(binned_MS) != 0.0
 
         # Process the formula 
-        formula = [process_formula(f, self.considered_atoms) for f in formula]
+        if formula is not None: formula = [process_formula(f, self.considered_atoms) for f in formula]
+
+        # Process the fragments 
+        frags_tokens, frags_mask = None, None
+        if frags_smiles is not None: 
+            assert frags_weight is not None 
+            frags_tokens, frags_mask = tokenize_frags(frags_smiles, self.tokenizer, n_cands = self.n_frag_candidates)
     
         # Get the FP
-        FP = [float(c) for c in sample[self.FP_type]]
+        FP = [float(c) for c in sample["FPs"][self.FP_type]]
 
-        return {"id_" : id_,
-                "mz": torch.tensor(mz, dtype=torch.float),
-                "intensities": torch.tensor(intensities, dtype=torch.float),
-                "formula": torch.tensor(formula, dtype=torch.float),
-                "mask": torch.tensor(mask, dtype=torch.bool),
-                "binned_MS": torch.tensor(binned_MS, dtype = torch.float),
-                "FP": torch.tensor(FP, dtype = torch.float)}
+        rec = {"mz": torch.tensor(mz, dtype=torch.float),
+               "intensities": torch.tensor(intensities, dtype=torch.float),
+               "mask": torch.tensor(mask, dtype=torch.bool),
+               "binned_MS": torch.tensor(binned_MS, dtype = torch.float),
+               "FP": torch.tensor(FP, dtype = torch.float)}
 
+        if self.return_id_: rec["id_"] = id_
+        if formula is not None: rec["formula"] = torch.tensor(formula, dtype=torch.float)
+        if frags_tokens is not None: rec["frags_tokens"] = frags_tokens
+        if frags_mask is not None: rec["frags_mask"] = frags_mask
+        if frags_weight is not None: rec["frags_weight"] = torch.tensor(frags_weight, dtype = torch.float)
 
-        
-        # Otherwise, collate as usual:
-        return DataLoader.default_collate(filtered_batch)
-
+        return rec 
+    
     def train_dataloader(self):
         train_data = Data(self.train_data, self.process)
         train_data_loader = DataLoader(train_data,
                                         num_workers = self.num_workers,
                                         pin_memory = self.pin_memory,
                                         batch_size = self.batch_size,
-                                        collate_fn = custom_collate_func,
                                         shuffle=True)
 
         return train_data_loader
@@ -215,7 +250,6 @@ class MSDataset(pl.LightningDataModule):
                                     num_workers = self.num_workers,
                                     pin_memory = self.pin_memory,
                                     batch_size = self.batch_size,
-                                    collate_fn = custom_collate_func,
                                     shuffle=False)
 
         return val_data_loader
@@ -226,7 +260,6 @@ class MSDataset(pl.LightningDataModule):
                                     num_workers = self.num_workers,
                                     pin_memory = self.pin_memory,
                                     batch_size = self.batch_size,
-                                    collate_fn = custom_collate_func,
                                     shuffle=False)
 
         return test_data_loader

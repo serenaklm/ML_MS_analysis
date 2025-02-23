@@ -5,6 +5,9 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from transformers import AutoModelForMaskedLM
+
+from utils import freeze_model
 
 class LearnableFourierFeatures(nn.Module):
     
@@ -64,8 +67,11 @@ class FragTransformerEncoder(pl.LightningModule):
         self.avg_loss_train, self.avg_loss_val = [], []
 
         # Get all the encoders
+        self.frag_encoder = AutoModelForMaskedLM.from_pretrained(chemberta_model).train()
+        self.frags_map_layer = nn.Sequential(nn.Linear(self.frag_encoder.config.hidden_size, model_dim),
+                                             nn.GELU(),
+                                             nn.Linear(model_dim, model_dim))
 
-        
         self.intensity_encoder = LearnableFourierFeatures(1, model_dim, hidden_dim, model_dim)
         self.peaks_encoder = nn.Sequential(nn.Linear(model_dim * 2, hidden_dim),
                                            nn.GELU(),
@@ -96,15 +102,24 @@ class FragTransformerEncoder(pl.LightningModule):
                                                        nn.Dropout(dropout_rate),
                                                        nn.Linear(hidden_dim, input_dim))
         
-    def forward(self, intensities, formula, mask, binned_ms):
+    def forward(self, intensities, mask, binned_ms, frags_tokens, frags_mask, frags_weight):
 
         # Get binned MS emb
         binned_ms_emb = self.binned_ms_encoder(binned_ms)
         
         # Get features for the MS 
-        formula_emb = self.formula_encoder(formula)
+        bs, n_peaks, n_cand, seq_length = frags_tokens.shape
+        frags_tokens = frags_tokens.view(-1, seq_length)
+        frags_mask = frags_mask.view(-1, seq_length)
+
+        frags_emb = self.frag_encoder(input_ids = frags_tokens, attention_mask = frags_mask, output_hidden_states = True)["hidden_states"][-1][:, 0, :]
+        frags_emb = frags_emb.view(bs, n_peaks, n_cand, -1).contiguous()
+
+        frags_emb = torch.einsum('ijk, ijkl -> ijl', frags_weight, frags_emb)
+        frags_emb = self.frags_map_layer(frags_emb)
+    
         intensities_emb = self.intensity_encoder(intensities[:, :, None])
-        peaks_emb = self.peaks_encoder(torch.concat([formula_emb, intensities_emb], dim = -1))
+        peaks_emb = self.peaks_encoder(torch.concat([frags_emb, intensities_emb], dim = -1))
 
         # Encode with transformer 
         # True are not allowed to attend while False values will be unchanged.
@@ -141,12 +156,13 @@ class FragTransformerEncoder(pl.LightningModule):
     def training_step(self, batch, batch_idx):
 
         # Unpack the batch 
-        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
+        intensities, mask = batch["intensities"], batch["mask"]
+        frags_tokens, frags_mask, frags_weight = batch["frags_tokens"], batch["frags_mask"], batch["frags_weight"]
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
         # Forward pass
-        FP_pred, binned_ms_pred = self(intensities, formula, mask, binned_ms)
+        FP_pred, binned_ms_pred = self(intensities, mask, binned_ms, frags_tokens, frags_mask, frags_weight)
 
         # Compute the FP prediction loss 
         FP_loss = self.compute_loss(FP_pred, FP)
@@ -169,12 +185,13 @@ class FragTransformerEncoder(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
 
         # Unpack the batch 
-        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
+        intensities, mask = batch["intensities"], batch["mask"]
+        frags_tokens, frags_mask, frags_weight = batch["frags_tokens"], batch["frags_mask"], batch["frags_weight"]
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
         # Forward pass
-        FP_pred, binned_ms_pred = self(intensities, formula, mask, binned_ms)
+        FP_pred, binned_ms_pred = self(intensities, mask, binned_ms, frags_tokens, frags_mask, frags_weight )
 
         # Compute the FP prediction loss 
         FP_loss = self.compute_loss(FP_pred, FP)

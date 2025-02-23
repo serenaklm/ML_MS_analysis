@@ -1,0 +1,46 @@
+project: GRAFF_MS
+seed: 17
+
+dataset:
+  data_dir: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/iceberg"
+  dataset_name: "massspecgym"
+  dataset_labels: "labels.tsv"
+  split_name: "inchikey.tsv"
+  form_dir_name: "no_subform"
+
+process_setting: 
+  batch_size: 128
+  num_workers: 16
+  num_bins: 15000
+  upper_limit: 15000
+  pe_embed_k: 11
+  num_fixed_forms: 5000
+
+model:
+  
+  name: ""
+
+  params: 
+    hidden_size: 512
+    layers: 6
+    set_layers: 0
+    mpnn_type: "GGNN"
+    dropout: 0.3 
+    output_dim: 15000
+    learning_rate: 0.00018
+    lr_decay_rate: 0.92
+    weight_decay: 1e-6
+    upper_limit: 15000
+    loss_fn: "cosine"
+    pe_embed_k: 11
+    pool_op: "avg"
+    embed_adduct: True 
+    num_fixed_forms: 5000
+
+trainer:
+  max_epochs: 100
+  devices: 4
+  accelerator: "gpu"
+  log_every_n_steps: 50
+  gradient_clip_val: 5 
+  gradient_clip_algorithm: "value"

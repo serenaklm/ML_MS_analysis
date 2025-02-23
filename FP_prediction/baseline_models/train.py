@@ -17,6 +17,8 @@ from utils import read_config
 from dataloader import MSDataset
 from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder, FragTransformerEncoder
 
+os.environ['TRANSFORMERS_CACHE'] = "/data/rbg/users/klingmin/transformers_cache"
+
 @rank_zero_only
 def write_config(wandb_logger, config):
 
@@ -25,7 +27,7 @@ def write_config(wandb_logger, config):
     config_out_path = os.path.join(run_out_dir, "run.yaml")
     with open(config_out_path, "w") as f:
         yaml.dump(config, f)
-    wandb_logger.experiment.save("run.yaml", policy="now")
+    wandb_logger.experiment.save("run.yaml", policy = "now")
 
 @rank_zero_only
 def write_config_local(config, config_out_path):
@@ -51,66 +53,57 @@ def update_config(config):
     config["trainer"]["val_check_interval"] = config["trainer"]["log_every_n_steps"] - 1
 
     if devices > 1:
-        config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=False))
+        config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
 
     if args.disable_checkpoint:
         config["trainer"]["enable_checkpointing"] = False
 
-    # Copy the configurations for vanilla transformer for formula transformer
-    config["model"]["formula_encoder"] = copy.deepcopy(config["model"]["MS_encoder"])
-
-    # Copy the configuration for vanilla transformer for frag transformer 
-    config["model"]["frag_encoder"] = {**config["model"]["frag_encoder"] , **copy.deepcopy(config["model"]["MS_encoder"])}
-
-    # Update the input_dim 
-    input_dim = int(config["data"]["max_da"] / config["data"]["bin_resolution"])
-    config["model"]["binned_MS_encoder"]["input_dim"] = input_dim
-    config["model"]["MS_encoder"]["input_dim"] = input_dim
-    config["model"]["formula_encoder"]["input_dim"] = input_dim
-    config["model"]["frag_encoder"]["input_dim"] = input_dim
-
-    # Update the number of considered atoms (only for formula encoder)
-    config["model"]["formula_encoder"]["n_atoms"] = len(config["data"]["considered_atoms"])
-
-    # Set mask missing formula to be true (only formula encoder)
-    if config["model"]["name"] == "formula_encoder":
-        config["data"]["mask_missing_formula"] = True
-
-    # Set mask missing frag to be true (only frag encoder)
-    if config["model"]["name"] == "frag_encoder":
-        config["data"]["mask_missing_frag"] = True
-
-    # Update the positive weight
-    pos_weight = int(config["model"]["train_params"]["pos_weight"])
-    config["model"]["binned_MS_encoder"]["pos_weight"] = pos_weight
-    config["model"]["MS_encoder"]["pos_weight"] = pos_weight
-    config["model"]["formula_encoder"]["pos_weight"] = pos_weight
-    config["model"]["frag_encoder"]["pos_weight"] = pos_weight
-
-    # Update the reconstruction weight 
-    reconstruction_weight = float(config["model"]["train_params"]["reconstruction_weight"]) 
-    config["model"]["binned_MS_encoder"]["reconstruction_weight"] = reconstruction_weight
-    config["model"]["MS_encoder"]["reconstruction_weight"] = reconstruction_weight
-    config["model"]["formula_encoder"]["reconstruction_weight"] = reconstruction_weight
-    config["model"]["frag_encoder"]["reconstruction_weight"] = reconstruction_weight
-
-    # Update the output_dim 
-    FP_dim_mapping = {"morgan4_256": 256,
+    # Get the FP_dim_mapping
+    FP_dim_mapping = {"MACCS": 167,
+                      "morgan4_256": 256,
                       "morgan4_1024": 1024, 
                       "morgan4_2048": 2048,
                       "morgan4_4096": 4096,
                       "morgan6_256": 256,
                       "morgan6_1024": 1024, 
                       "morgan6_2048": 2048,
-                      "morgan6_4096": 4096,
-                      "morgan_r_2_top_df_200" : 200}
+                      "morgan6_4096": 4096}
 
     if config["data"]["FP_type"] not in FP_dim_mapping: raise ValueError(f"FP type selected not supported.")
+
+    # Update config for formula_encoder
+    config["model"]["formula_encoder"] = copy.deepcopy(config["model"]["MS_encoder"])
+    config["model"]["formula_encoder"]["n_atoms"] = len(config["data"]["considered_atoms"])
+
+    # Update config for frag_encoder
+    config["model"]["frag_encoder"] = copy.deepcopy(config["model"]["MS_encoder"])
+    config["model"]["frag_encoder"]["chemberta_model"] = config["data"]["chemberta_model"]
+
+    # Update params for all models 
+    all_models = ["binned_MS_encoder", "MS_encoder", "formula_encoder", "frag_encoder"]
+    for m in all_models:
+
+        # Update the input_dim 
+        input_dim = int(config["data"]["max_da"] / config["data"]["bin_resolution"])
+        config["model"][m]["input_dim"] = input_dim
+            
+        # Update the positive weight
+        pos_weight = int(config["model"]["train_params"]["pos_weight"])
+        config["model"][m]["pos_weight"] = pos_weight
+
+        # Update the reconstruction weight 
+        reconstruction_weight = float(config["model"]["train_params"]["reconstruction_weight"]) 
+        config["model"][m]["reconstruction_weight"] = reconstruction_weight
+
+        # Update the output_dim
+        config["model"][m]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
+
+        # Update getting the CF, fragments etc 
+        config["data"]["get_CF"] = config["data"]["get_frags"] = False  
     
-    config["model"]["binned_MS_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
-    config["model"]["MS_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
-    config["model"]["formula_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
-    config["model"]["frag_encoder"]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
+    # Update getting the CF, fragments for each individual model 
+    if config["model"]["name"] == "formula_encoder": config["data"]["get_CF"] = True 
+    if config["model"]["name"] == "frag_encoder": config["data"]["get_frags"] = True 
 
     return config
 
@@ -174,8 +167,8 @@ def train(config):
         model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["model"]["train_params"]["lr"], 
                                                                                 weight_decay = config["model"]["train_params"]["weight_decay"])
     elif model_name == "frag_encoder":
-        model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["model"]["train_params"]["lr"], 
-                                                                                weight_decay = config["model"]["train_params"]["weight_decay"])    
+        model = FragTransformerEncoder(**config["model"]["frag_encoder"], lr = config["model"]["train_params"]["lr"], 
+                                                                          weight_decay = config["model"]["train_params"]["weight_decay"])    
     else:
         raise Exception(f"{model_name} not supported.")
     

@@ -1,4 +1,4 @@
-from .MLP import MLP
+from .MS_binned_model import MSBinnedModel
 
 # Define the buildin_models list
 from .build import ModelFactory

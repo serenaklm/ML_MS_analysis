@@ -1,51 +1,48 @@
-project: LS_MS
+project: LS
 seed: 17
-device: 4 
+device: 1
 
 data:
-  dir: "/data/rbg/users/klingmin/projects/MS_processing/data/data_splits/random_split_pos"
-
-dataprocessing: 
-  batch_size: 512
-  num_workers: 2
-  num_batches: 500
-
-dataloader:
-  bin_resolution: 1.0
-  max_da: 1000
-  max_MS_peaks: 1000
-  FP_type: "morgan4_2048"
+  dir: "/data/rbg/users/klingmin/projects/MS_processing/data_splitting/massspecgym/splits"
+  train_folder: "train_data"
+  val_folder: "val_data"
+  test_folder: "test_data"
+  batch_size: 32
+  num_workers: 4
+  bin_resolution: 0.1
+  max_da: 1500
+  max_MS_peaks: 25
+  FP_type: "MACCS"
+  intensity_type: "raw"
+  intensity_threshold: 5.0
+  considered_atoms: ["C", "H", "O", "N", "S", "Cl", "Br", "F", "P", "I", "K", "Si", "Na"]
+  n_frag_candidates: 5
+  chemberta_model: "/data/rbg/users/klingmin/projects/ML_MS_analysis/pretrained_models/ChemBERTa-zinc-base-v1"
 
 model:
-  name: MLP
+  name: "binned_MS_encoder" # Choices are: binned_MS_encoder for now - planning to extend it to: MS_encoder, formula_encoder, frag_encoder
+
   train_params:
+    lr: 0.0005
+    weight_decay: 0.0005
     n_outer_loops: 300
+    num_batches: 500
     patience: 5
     convergence_threshold: 0.003
     w_gap: 1.0
     w_ratio: 1.0 
     w_balance: 1.0
     train_ratio: 0.8
-  
-  MLP:
+
+  binned_MS_encoder:
     model_dim: 512
     hidden_dim: 2048
     output_dim: 1024
-    dropout_rate: 0.15
+    dropout_rate: 0.20
 
-  MSTransformer:
-    n_unique_adducts: 10
-    n_unique_instrument_types: 26
-    n_heads: 4
-    n_layers: 6
+  MS_encoder:
+    n_heads: 8
+    n_layers: 8
     model_dim: 512
     hidden_dim: 2048
-    output_dim: 1024
-    dropout_rate: 0.15
-    include_adduct_idx: False
-    include_instrument_idx: False
-
-optimizer:
-  name: Adam
-  lr: 0.0005
-  clip_grad_norm: 0
+    dropout_rate: 0.20

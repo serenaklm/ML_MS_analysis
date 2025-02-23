@@ -52,7 +52,6 @@ def list_to_dict_mass_specgym(data):
 
     return data_spec, data_spec_dict
 
-
 def list_to_dict_mass_NIST2023(data):
 
     data_spec = []
@@ -81,7 +80,6 @@ def list_to_dict_mass_NIST2023(data):
 
     return data_spec, data_spec_dict
 
-
 def group_data_by_experimental_conditions(data_list):
 
     data_by_experimental_conditions = {} 
@@ -101,7 +99,6 @@ def group_data_by_experimental_conditions(data_list):
         data_by_experimental_conditions[formula][instrument][adduct][energy].append(spec)
     
     return data_by_experimental_conditions
-
 
 def get_lookup_performance(data, data_by_experimental_conditions, greedy_cs):
 
@@ -153,7 +150,6 @@ def get_lookup_performance(data, data_by_experimental_conditions, greedy_cs):
         all_ranks.append(rank)
     
     return all_ranks, clean_set, noisy_set
-
 
 def get_recall_at_k(all_ranks):
 

@@ -1,0 +1,47 @@
+project: ICEBERG_GEN
+seed: 17
+
+dataset:
+  data_dir: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/mist"
+  dataset_name: "massspecgym_inchikey_train"
+  dataset_labels: "labels.tsv"
+  magma_folder: "magma_outputs/"
+  split_name: "inchikey.tsv"
+
+process_setting: 
+  batch_size: 32
+  num_workers: 8
+  add_hs: True
+  pe_embed_k: 14
+  root_encode: "gnn"
+
+model:
+  
+  name: ""
+
+  params: 
+    hidden_size: 512
+    layers: 6
+    dropout: 0.2
+    mpnn_type: "GGNN"
+    set_layers: 0
+    learning_rate: 0.000996
+    lr_decay_rate: 0.7214
+    weight_decay: 0.0
+    pe_embed_k: 14
+    pool_op: "avg"
+    root_encode: "gnn"
+    inject_early: False
+    embed_adduct: True 
+    encode_forms: True
+    add_hs: True
+
+trainer:
+  max_epochs: 200
+  devices: 4
+  accelerator: "gpu"
+  log_every_n_steps: 50
+  gradient_clip_val: 5 
+  gradient_clip_algorithm: "value"
+
+

@@ -9,8 +9,8 @@ import pytorch_lightning as pl
 class MSBinnedModel(pl.LightningModule):
     
     def __init__(self, lr: float = 1e-4,
-                       weight_decay: float = 0.10, 
-                       input_dim: int = 888,
+                       weight_decay: float = 5e-4, 
+                       input_dim: int = 100,
                        model_dim: int = 512,
                        hidden_dim: int = 2048,
                        output_dim: int = 1024,
@@ -34,6 +34,7 @@ class MSBinnedModel(pl.LightningModule):
         # Get the MLP 
         self.MLP = nn.Sequential(nn.Linear(input_dim, model_dim),
                                  nn.GELU(),
+                                 nn.Dropout(dropout_rate),
                                  nn.Linear(model_dim, hidden_dim),
                                  nn.GELU(),
                                  nn.Dropout(dropout_rate),
