@@ -1,0 +1,47 @@
+project: massformer
+seed: 17
+
+dataset:
+  data_dir: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/iceberg"
+  dataset_name: "massspecgym"
+  dataset_labels: "labels.tsv"
+  split_name: "inchikey.tsv"
+  form_dir_name: "subformulae/no_subform"
+
+process_setting: 
+  batch_size: 128
+  num_workers: 16
+  num_bins: 15000
+  upper_limit: 15000
+
+model:
+  
+  name: ""
+
+  params: 
+    mf_num_ff_num_layers: 1
+    mf_ff_h_dim: 1024
+    mf_ff_skip: True
+    mf_layer_type: "neims"
+    mf_dropout: 0.1
+    use_reverse: True 
+    embed_adduct: True 
+    gf_model_name: "graphormer_base"
+    gf_pretrain_name: "pcqm4mv2_graphormer_base"
+    gf_fix_num_pt_layers: 0
+    gf_reinit_num_pt_layers: -1 
+    gf_reinit_layernorm: True
+    learning_rate: 0.00014 
+    lr_decay_rate: 0.853
+    output_dim: 15000
+    upper_limit: 15000
+    weight_decay: 1e-07
+    loss_fn: "cosine"
+
+trainer:
+  max_epochs: 100
+  devices: 4
+  accelerator: "gpu"
+  log_every_n_steps: 50
+  gradient_clip_val: 5 
+  gradient_clip_algorithm: "value"

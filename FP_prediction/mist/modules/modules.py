@@ -55,7 +55,6 @@ class FormulaTransformer(nn.Module):
         embed_instrument: bool = False,
         inten_transform: str = "float",
         no_diffs: bool = False,
-        **kwargs
     ):
         """_summary_
         Args:

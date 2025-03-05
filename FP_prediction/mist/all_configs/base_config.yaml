@@ -3,52 +3,59 @@ seed: 17
 
 dataset:
   fp_names: ["morgan4096"]
-  spec_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/mist/massspecgym/spec_files/"
-  subform_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/mist/massspecgym/subformulae/default_subformulae/"
-  labels_file: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/mist/massspecgym/labels.tsv"
-  split_file: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/mist/massspecgym/splits/inchikey.tsv"
+  data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/mist/"
+  dataset: "nist2023"
+  split_filename: "inchikey_vanilla.tsv"
   cache_featurizers: True
   spec_features: "peakformula"
   mol_features: "fingerprint"
   dataset_type: "default"
+  cls_type: "ms1"
+  magma_aux_loss: True
+  magma_modulo: 512
 
 model:
   
-  name: ""
+  name: "mist"
 
   params: 
-    magma_aux_loss: False
+    
+    form_embedder: "pos-cos"
     magma_loss_lambda: 8
-    magma_modulo: 512
-    iterative_preds: growing
+    iterative_preds: "growing"
     iterative_loss_weight: 0.4
+    shuffle_train: False 
+    loss_fn: "cosine"
+
     hidden_size: 256
     peak_attn_layers: 2
-    refine_layers: 4
-    form_embedder: "pos-cos"
-    pairwise_featurization: True
-    no_diffs: True
+    set_pooling: "cls"
     spectra_dropout: 0.1
-    fp_names: ["morgan4096"]
-
+    num_heads: 8 
+    pairwise_featurization: True
+    embed_instrument: False
+    no_diffs: True
+    refine_layers: 4
   # ckpt_file: None 
 
 train_params:
-  lr: 0.00077
+  learning_rate: 0.00077
   lr_decay_frac: 0.9
-  weight_decay: 1e-07
+  weight_decay: 1e-7
+  scheduler: False
   
 train_settings: 
-  batch_size: 128
+  batch_size: 256
   num_workers: 4
   augment_data: False  
-  # --forward-labels 'data/paired_spectra/canopus_train/aug_iceberg_canopus_train/biomols_filtered_smiles_canopus_train_labels.tsv' \ --> Only if data augmentation is used 
-  # --forward-aug-folder 'data/paired_spectra/canopus_train/aug_iceberg_canopus_train/canopus_hplus_100_0/subforms/' \
-  # --frac-orig 0.6 \  
-  
+
 trainer:
-  max_epochs: 50
+  max_epochs: 200
   devices: 4
+  log_every_n_steps: 5
   accelerator: "gpu"
-  log_every_n_steps: 50
   gradient_clip_val: 5 
+
+callbacks: 
+  patience: 20 
+  val_monitor: "val_bce_loss"

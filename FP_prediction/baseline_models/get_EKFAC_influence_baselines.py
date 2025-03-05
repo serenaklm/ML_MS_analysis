@@ -1,0 +1,311 @@
+import os 
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+import torch 
+import torch.nn as nn 
+import torch.nn.functional as F
+from kronfluence.task import Task
+from kronfluence.utils.dataset import DataLoaderKwargs
+from kronfluence.analyzer import Analyzer, prepare_model
+
+from modules import * 
+from dataloader import MSDataset, Data
+from utils import read_config, load_pickle, pickle_data, replace_MS_encoder_layers
+
+class TaskBinnedMS(Task):
+
+    def compute_train_loss(self,
+        batch: Any,
+        model: nn.Module,
+        sample: bool = False) -> torch.Tensor:
+
+        # Unpack the batch 
+        FP = batch["FP"]
+        binned_ms = batch["binned_MS"]
+
+        # Forward pass
+        FP_pred, binned_ms_pred = model(binned_ms)
+
+        # Get the loss
+        reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
+        FP_loss = F.binary_cross_entropy_with_logits(FP_pred, FP)
+
+        return FP_loss + reconstruction_loss
+
+    def compute_measurement(
+        self,
+        batch: Any,
+        model: nn.Module) -> torch.Tensor:
+
+        # Forward pass 
+        FP_pred, binned_ms_pred = model(batch["binned_MS"])
+
+        # Get the loss 
+        reconstruction_loss = F.mse_loss(binned_ms_pred, batch["binned_MS"])
+        FP_loss = F.binary_cross_entropy_with_logits(FP_pred, batch["FP"])
+
+        return FP_loss + 0.1 * reconstruction_loss
+
+    # def get_influence_tracked_modules(self) -> Optional[List[str]]:
+    #     # TODO: [Optional] Complete this method.
+    #     return None  # Compute influence scores on all available modules.
+
+    # def get_attention_mask(self, batch: Any) -> Optional[Union[Dict[str, torch.Tensor], torch.Tensor]]:
+    #     # TODO: [Optional] Complete this method.
+    #     return None  # Attention mask not used.
+
+class TaskMS(Task):
+
+    def compute_train_loss(self,
+        batch: Any,
+        model: nn.Module,
+        sample: bool = False) -> torch.Tensor:
+
+        # Unpack the batch 
+        mz, intensities, mask = batch["mz"], batch["intensities"], batch["mask"]
+        binned_ms = batch["binned_MS"]
+        FP = batch["FP"]
+
+        # Forward pass
+        FP_pred, binned_ms_pred = model(mz, intensities, mask, binned_ms)
+        
+        # Get loss
+        reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
+        FP_loss = F.binary_cross_entropy_with_logits(FP_pred, FP)
+
+        return FP_loss + reconstruction_loss
+
+    def compute_measurement(
+        self,
+        batch: Any,
+        model: nn.Module) -> torch.Tensor:
+
+        # Unpack the batch 
+        mz, intensities, mask = batch["mz"], batch["intensities"], batch["mask"]
+        binned_ms = batch["binned_MS"]
+        FP = batch["FP"]
+
+        # Forward pass
+        FP_pred, binned_ms_pred = model(mz, intensities, mask, binned_ms)
+        
+        # Get loss
+        reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
+        FP_loss = F.binary_cross_entropy_with_logits(FP_pred, FP)
+
+        return FP_loss + 0.1 * reconstruction_loss
+
+    def get_influence_tracked_modules(self) -> Optional[List[str]]:
+
+        total_modules = []
+
+        for i in range(8):
+            total_modules.append(f"MS_encoder.layers.{i}.linear1")
+            total_modules.append(f"MS_encoder.layers.{i}.linear2")
+  
+        for i in [0,3,6,9]:
+            total_modules.append(f"binned_ms_encoder.{i}")
+
+        for i in [0,2]:
+            total_modules.append(f"mz_encoder.MLP.{i}")            
+            total_modules.append(f"intensity_encoder.MLP.{i}")
+            total_modules.append(f"peaks_encoder.{i}")
+            total_modules.append(f"pred_layer.{i}")
+
+        for i in [0,3]:
+            total_modules.append(f"reconstruction_pred_layer.{i}")
+
+        return total_modules
+
+    def get_attention_mask(self, batch: Any) -> Optional[Union[Dict[str, torch.Tensor], torch.Tensor]]:
+
+        return batch["mask"]
+
+class TaskFormula(Task):
+
+    def compute_train_loss(self,
+        batch: Any,
+        model: nn.Module,
+        sample: bool = False) -> torch.Tensor:
+
+        # Unpack the batch 
+        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
+        binned_ms = batch["binned_MS"]
+        FP = batch["FP"]
+
+        FP_pred, binned_ms_pred = model(intensities, formula, mask, binned_ms)
+
+        # Get loss
+        reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
+        FP_loss = F.binary_cross_entropy_with_logits(FP_pred, FP)
+
+        return FP_loss + reconstruction_loss
+
+    def compute_measurement(
+        self,
+        batch: Any,
+        model: nn.Module) -> torch.Tensor:
+
+        # Unpack the batch 
+        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
+        binned_ms = batch["binned_MS"]
+        FP = batch["FP"]
+
+        FP_pred, binned_ms_pred = model(intensities, formula, mask, binned_ms)
+        
+        # Get loss
+        reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
+        FP_loss = F.binary_cross_entropy_with_logits(FP_pred, FP)
+
+        return FP_loss + 0.1 * reconstruction_loss
+
+    def get_influence_tracked_modules(self) -> Optional[List[str]]:
+
+        total_modules = []
+
+        for i in range(8):
+            total_modules.append(f"MS_encoder.layers.{i}.linear1")
+            total_modules.append(f"MS_encoder.layers.{i}.linear2")
+  
+        for i in [0,3,6,9]:
+            total_modules.append(f"binned_ms_encoder.{i}")
+
+        for i in [0,2]:
+            total_modules.append(f"formula_encoder.{i}")            
+            total_modules.append(f"intensity_encoder.MLP.{i}")
+            total_modules.append(f"peaks_encoder.{i}")
+            total_modules.append(f"pred_layer.{i}")
+
+        for i in [0,3]:
+            total_modules.append(f"reconstruction_pred_layer.{i}")
+
+        return total_modules
+    
+    def get_attention_mask(self, batch: Any) -> Optional[Union[Dict[str, torch.Tensor], torch.Tensor]]:
+
+        return batch["mask"]
+
+def get_checkpoint_path(folder):
+
+    checkpoints = [f for f in os.listdir(folder) if f.endswith(".ckpt")]
+    best_checkpoint, lowest_loss = "", 1e4
+
+    for c in checkpoints:
+
+        loss = float(c.replace(".ckpt", "").split("=")[-1]) # hack 
+        if loss < lowest_loss:
+            lowest_loss = loss 
+            best_checkpoint = c 
+    
+    return os.path.join(folder, best_checkpoint)
+
+def get_datasets(folder, params, top_k):
+
+    params["data"]["get_CF"], params["data"]["get_frags"] = False, False
+    model_name = params["model"]["name"]
+
+    if model_name == "formula_encoder": params["data"]["get_CF"] = True 
+    if model_name == "frag_encoder": params["data"]["get_frags"] = True 
+
+    dataset = MSDataset(**params["data"])
+    train_files_to_analyze = dataset.train_data
+    train_data = Data(train_files_to_analyze, dataset.process)
+
+    # Get the test id_ to analyze
+    test_results_path = os.path.join(folder, "test_results.pkl")
+    test_results = load_pickle(test_results_path)
+    test_results = sorted(test_results.items(), key = lambda item: item[1]["loss"], reverse = True)
+
+    test_ids_to_analyze = [str(r[0]).replace("tensor(", "").replace(")", "") for r in test_results[:top_k]] # Hack
+    test_files_to_analyze = [f for f in dataset.test_data if Path(f).stem in test_ids_to_analyze]
+    test_data = Data(test_files_to_analyze, dataset.process)
+    print(f"Analyzing : {len(test_data)} test samples")
+    
+    return train_data, test_data, train_files_to_analyze, test_files_to_analyze
+
+def get_modules(model_cache_folder, params, top_k):
+
+    model_path = get_checkpoint_path(model_cache_folder)
+
+    model_name = params["model"]["name"] 
+    if model_name == "binned_MS_encoder":
+        model = MSBinnedModel.load_from_checkpoint(model_path).train()
+        task = TaskBinnedMS()
+
+    elif model_name == "MS_encoder":
+        model = MSTransformerEncoder.load_from_checkpoint(model_path).train()
+        task = TaskMS()
+
+    elif model_name == "formula_encoder":
+        model = FormulaTransformerEncoder.load_from_checkpoint(model_path).train()
+        task = TaskFormula()
+
+    else:
+        raise NotImplementedError()
+    
+    train_data, test_data, train_ids, test_ids = get_datasets(model_cache_folder, params, top_k)
+
+    return model, task, train_data, test_data, train_ids, test_ids
+
+def get_influence_scores(folder, output_path, top_k):
+
+    # Get the parameters 
+    params = read_config(folder / "run.yaml")
+
+    # Get the model 
+    model, task, train_data, test_data, train_ids, test_ids = get_modules(folder, params, top_k)
+
+    # Get the modules to get the influence scores 
+    model = prepare_model(model = model, task = task)
+    analyzer = Analyzer(analysis_name = f"{folder.stem}", model = model, task = task)
+
+    # [Optional] Set up the parameters for the DataLoader.
+    dataloader_kwargs = DataLoaderKwargs(num_workers=4, pin_memory=True)
+    analyzer.set_dataloader_kwargs(dataloader_kwargs)
+
+    # Compute all factors
+    analyzer.fit_all_factors(factors_name="EKFAC", dataset=train_data)
+
+    # Get the scores
+    analyzer.compute_pairwise_scores(
+        scores_name="scores",
+        factors_name="EKFAC",
+        query_dataset=test_data,
+        train_dataset=train_data,
+        per_device_query_batch_size=4,
+    )
+
+    # Load the scores 
+    scores = analyzer.load_pairwise_scores(scores_name = "scores")
+
+    # Save the scores
+    pickle_data(scores, output_path)
+
+    # Save the ids
+    pickle_data(train_ids, folder / "train_ids.pkl")
+    pickle_data(test_ids, folder / "test_ids.pkl")
+
+if __name__ == "__main__":
+
+    top_k = 1000
+
+    # Manually add all folders to be processed into a list (hack)
+    folder = "./models_cached/"
+    all_folders = []
+    
+    for FP in os.listdir(folder):
+        FP_folder = os.path.join(folder, FP)
+        for model in os.listdir(FP_folder):
+            model_folder = os.path.join(FP_folder, model)
+            for checkpoint in os.listdir(model_folder):
+                all_folders.append(os.path.join(model_folder, checkpoint))
+
+    # Iterate through all folders to get influence scores for the models
+    for f in all_folders:
+
+        f = Path(f)
+        output_path = f / "EK-FAC_scores.pkl"
+        if os.path.exists(output_path): print(f"{output_path} already exists. Continue.")
+
+        print(f"Getting the influence scores for: {f}")
+        get_influence_scores(f, output_path, top_k)

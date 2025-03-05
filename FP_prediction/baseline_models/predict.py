@@ -90,7 +90,7 @@ def predict(model, config, device, batch_size, threshold = 0.5):
     if model_name == "frag_encoder": get_frags = True 
 
     dataset = MSDataset(dir = config["data"]["dir"],
-                        test_folder = config["data"]["test_folder"],
+                        split_file = config["data"]["split_file"],
                         batch_size = batch_size,
                         num_workers = 4,
                         max_da = config["data"]["max_da"], 
@@ -104,8 +104,7 @@ def predict(model, config, device, batch_size, threshold = 0.5):
                         chemberta_model = config["data"]["chemberta_model"],
                         return_id_ = True, 
                         get_CF = get_CF,
-                        get_frags = get_frags,
-                        mode = "inference")
+                        get_frags = get_frags)
 
     data_loader = dataset.test_dataloader()
     
@@ -202,19 +201,22 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--batch_size", type = int, default = 128, help = "Batch size when running prediction.")
+    parser.add_argument("--batch_size", type = int, default = 512, help = "Batch size when running prediction.")
     parser.add_argument("--device", type = str, default = "cuda", help = "The device to use for prediction.")
     parser.add_argument("--checkpoint", type = str, help = "Path to a model checkpoint")
     args = parser.parse_args()
 
     # Manually add in (hack)
-    folder = "./results_cache/"
+    folder = "./models_cached/"
     all_folders = []
     
-    for model in os.listdir(folder):
-        subfolder = os.path.join(folder, model)
-        for checkpoint in os.listdir(subfolder):
-            all_folders.append(os.path.join(subfolder, checkpoint))
+    for FP in os.listdir(folder):
+        FP_folder = os.path.join(folder, FP)
+        for model in os.listdir(FP_folder):
+            model_folder = os.path.join(FP_folder, model)
+            for checkpoint in os.listdir(model_folder):
+                
+                all_folders.append(os.path.join(model_folder, checkpoint))
 
     for f in all_folders:
 

@@ -2,9 +2,7 @@ import os
 import copy
 import yaml
 import logging
-import pickle
 import argparse
-from pathlib import Path
 from datetime import datetime
 
 import torch
@@ -12,8 +10,8 @@ import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 from utils import read_config
 from mist.data import datasets, splitter, featurizers
@@ -40,6 +38,30 @@ def write_config_local(config, config_out_path):
     with open(config_out_path, "w") as f:
         yaml.dump(config, f)
 
+def update_config(args, config):
+
+    config["args"] = args.__dict__
+
+    config["train_params"]["weight_decay"] = float(config["train_params"]["weight_decay"])
+    config["model"]["params"]["fp_names"] = config["dataset"]["fp_names"] 
+    config["model"]["params"]["magma_modulo"] = config["dataset"]["magma_modulo"]
+    config["model"]["params"]["magma_aux_loss"] = config["dataset"]["magma_aux_loss"]
+
+    config["model"]["params"]["learning_rate"] = config["train_params"]["learning_rate"] 
+    config["model"]["params"]["weight_decay"] = config["train_params"]["weight_decay"]
+    config["model"]["params"]["lr_decay_frac"] = config["train_params"]["lr_decay_frac"]
+    config["model"]["params"]["scheduler"] = config["train_params"]["scheduler"]
+
+    data_folder = config["dataset"]["data_folder"]
+    dataset = config["dataset"]["dataset"]
+    config["dataset"]["labels_file"] = os.path.join(data_folder, dataset, "labels.tsv")
+    config["dataset"]["subform_folder"] = os.path.join(data_folder, dataset, "subformulae", "default_subformulae/")
+    config["dataset"]["spec_folder"] = os.path.join(data_folder, dataset, "spec_folder")
+    config["dataset"]["magma_folder"] = os.path.join(data_folder, dataset, "magma_outputs", "magma_tsv")
+    config["dataset"]["split_file"] = os.path.join(data_folder, dataset, "splits", config["dataset"]["split_filename"])
+
+    return config
+    
 def get_datamodule(config):
 
     # Split data
@@ -61,7 +83,7 @@ def get_datamodule(config):
 
     for name, _data in zip(["train", "val", "test"], [train, val, test]):
         logging.info(f"Split: {split_name}, Len of {name}: {len(_data)}")
-
+    
     train_dataset = datasets.SpectraMolDataset(
         spectra_mol_list=train, featurizer=paired_featurizer, **config["train_settings"]
     )
@@ -82,14 +104,9 @@ def train(config):
     # Set a random seed 
     seed_everything(config["seed"])
 
-    # Get the name of the dataset and the split 
-    dataset, _, split = config["dataset"]["split_file"].split("/")[-3:]
-    FP_name = config["dataset"]["fp_names"][0]
-    split = split.replace(".tsv", "")
-
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"], "mist")
-    expt_name = f"{dataset}_{split}_{FP_name}"
+    expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
 
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
@@ -122,14 +139,16 @@ def train(config):
     # if config["model"].get("ckpt_file") is not None:
     #     model.load_from_ckpt(config["model"].get("ckpt_file"))
 
-     # Get trainer and logger
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss",
+    # Get trainer and logger
+    monitor = config["callbacks"]["val_monitor"]
+    checkpoint_callback = ModelCheckpoint(monitor=monitor,
                                           dirpath = results_dir,
-                                          filename = '{epoch:02d}-{val_loss:.3f}',
+                                          filename = '{epoch:03d}-{val_bce_loss:.5f}', # Hack 
                                           every_n_train_steps = config["trainer"]["log_every_n_steps"], 
                                           save_top_k = 2, mode = "min")
-
-    trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback])
+    
+    earlystop_callback = EarlyStopping(monitor=monitor, patience=config["callbacks"]["patience"])
+    trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback, earlystop_callback])
 
     # Start the training now
     trainer.fit(model, datamodule = datamodule)
@@ -155,7 +174,7 @@ if __name__ == "__main__":
     config = read_config(os.path.join(args.config_dir, args.config_file))
 
     # Update the config 
-    config["args"] = args.__dict__
+    config = update_config(args, config)
 
     # Run the trainer now 
     train(config)

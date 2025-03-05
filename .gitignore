@@ -1,9 +1,7 @@
 **/nist2020/*
-**/results_cache/*
+**/influence_results/*
+**/models_cached/*
 **/results/*
 **/DreaMS/*
 **/wandb/*
-**/cache/*
-**/results_MSG/*
-**/massformer/*
-**/torch-influence/*
+**/pretrained_models/*

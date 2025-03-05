@@ -10,8 +10,8 @@ import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 from utils import read_config
 from dataloader import MSDataset
@@ -40,8 +40,9 @@ def create_results_dir(results_dir):
 
     if not os.path.exists(results_dir): os.makedirs(results_dir)
 
-def update_config(config):
+def update_config(args, config):
     
+    config["args"] = args.__dict__
     devices = config["trainer"].get("devices", 1)
 
     if config["args"]["debug"]:
@@ -147,13 +148,14 @@ def train(config):
     dataset.setup()
 
     # Get trainer and logger
-    checkpoint_callback = ModelCheckpoint(monitor="val_average_loss",
+    monitor = config["callbacks"]["monitor"]
+    checkpoint_callback = ModelCheckpoint(monitor=monitor,
                                           dirpath = results_dir,
-                                          filename = '{epoch:02d}-{val_average_loss:.3f}',
+                                          filename = '{epoch:03d}-{val_average_loss:.5f}', # Hack
                                           every_n_train_steps = config["trainer"]["log_every_n_steps"], 
                                           save_top_k = 2, mode = "min")
-
-    trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback])
+    earlystop_callback = EarlyStopping(monitor=monitor, patience=config["callbacks"]["patience"])
+    trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback, earlystop_callback])
 
     # Get the model
     model_name = config["model"]["name"]
@@ -199,8 +201,7 @@ if __name__ == "__main__":
     if "trainer" not in config: raise ValueError("Missing required key: trainer")
 
     # Update the trainer config
-    config["args"] = args.__dict__
-    config = update_config(config)
+    config = update_config(args, config)
 
     # Run the trainer now 
     train(config)

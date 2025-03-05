@@ -19,7 +19,6 @@ def cosine_loss(x, y):
         x.expand(y.shape), y.float()
     ).unsqueeze(-1)
 
-    
 def build_lr_scheduler(
     optimizer, lr_decay_frac: float, decay_steps: int = 10000, warmup: int = 100
 ):
@@ -48,27 +47,32 @@ class MistNet(pl.LightningModule):
 
     def __init__(
         self,
-        fp_names: List[str] = ["morgan2048"],
-        binarization_thresh: float = 0.5,
-        loss_fn: str = "bce",
         magma_aux_loss: bool = False,
+        form_embedder: str = "float",
+        magma_loss_lambda: int = 0,
         iterative_preds: str = "none",
         iterative_loss_weight: float = 0.0,
         shuffle_train: bool = False,
-        magma_loss_lambda=0,
-        magma_modulo: int = 512,
+        fp_names: List[str] = ["morgan2048"],
+        binarization_thresh: float = 0.5,
+        loss_fn: str = "bce",
+        
         hidden_size: int = 128,
         peak_attn_layers: int = 2,
-        refine_layers: int = 4,
-        no_diffs: bool = False,
+        set_pooling: str = "inten",
         spectra_dropout: float = 0.1,
+        num_heads: int = 8,
         pairwise_featurization: bool = True,
-        form_embedder: str = "float",
+        embed_instrument: bool = False,
+        no_diffs: bool = False,
+
+        refine_layers: int = 4,
+        magma_modulo: int = 512,
+
         learning_rate: float = 0.1,
-        weight_decay: float = 0.0,
         lr_decay_frac: float = 0.1,
-        scheduler: bool = False,
-        **kwargs,
+        weight_decay: float = 0.0,
+        scheduler: bool = False
     ):
         """_summary_
 
@@ -91,7 +95,6 @@ class MistNet(pl.LightningModule):
         self.save_hyperparameters()
         self.predict_frag_fps = magma_aux_loss
         self.form_embedder = form_embedder
-
         self.magma_loss_lambda = magma_loss_lambda
 
         self.iterative_preds = iterative_preds
@@ -119,12 +122,15 @@ class MistNet(pl.LightningModule):
             raise NotImplementedError()
 
         self.spectra_encoder = self._build_model(hidden_size = hidden_size, 
+                                                 peak_attn_layers = peak_attn_layers,
+                                                 set_pooling = set_pooling,
                                                  spectra_dropout = spectra_dropout, 
-                                                 refine_layers = refine_layers, 
-                                                 magma_modulo = magma_modulo, 
-                                                 peak_attn_layers=peak_attn_layers,
-                                                 pairwise_featurization=pairwise_featurization,
-                                                 no_diffs = no_diffs)
+                                                 pairwise_featurization = pairwise_featurization,
+                                                 num_heads = num_heads,
+                                                 embed_instrument = embed_instrument,
+                                                 no_diffs = no_diffs,
+                                                 refine_layers = refine_layers,
+                                                 magma_modulo=magma_modulo)
 
         # Useful for shuffle_train
         rand_perm = torch.randperm(self.output_size).long()
@@ -142,15 +148,18 @@ class MistNet(pl.LightningModule):
     def _build_model(
         self,
         hidden_size: int = 50,
+        peak_attn_layers: int = 2,
+        set_pooling: str = "cls",
         spectra_dropout: float = 0.0,
+        pairwise_featurization: bool = True,
+        num_heads: int = 8,
+        embed_instrument: bool = False,
+        no_diffs: bool = True,
         top_layers: int = 1,
         refine_layers: int = 0,
         magma_modulo: int = 2048,
-        peak_attn_layers: int = 2,
-        pairwise_featurization: bool = True,
-        no_diffs: bool = True,
-        **kwargs,
     ):
+        
         """build_model"""
 
         self.hidden_size = hidden_size
@@ -162,13 +171,15 @@ class MistNet(pl.LightningModule):
         spectra_encoder_main = modules.FormulaTransformer(
             hidden_size=hidden_size,
             peak_attn_layers=peak_attn_layers,
+            set_pooling=set_pooling,
             spectra_dropout=spectra_dropout,
             pairwise_featurization=pairwise_featurization,
+            num_heads=num_heads,
             form_embedder=self.form_embedder,
+            embed_instrument=embed_instrument,
             no_diffs=no_diffs,
-            **kwargs,
         )
-
+        
         fragment_pred_parts = []
         for _ in range(top_layers - 1):
             fragment_pred_parts.append(nn.Linear(hidden_size, hidden_size))

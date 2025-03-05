@@ -1,5 +1,7 @@
 """DAG Gen model """
+import math
 import numpy as np
+
 import torch
 import torch.nn as nn
 
@@ -339,9 +341,18 @@ class FragGNN(pl.LightningModule):
         optimizer = torch.optim.Adam(
             self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
         )
-        scheduler = nn_utils.build_lr_scheduler(
-            optimizer=optimizer, lr_decay_rate=self.lr_decay_rate, warmup=self.warmup
-        )
+
+        def lr_lambda(step, decay_steps: int = 5000):
+            if step >= self.warmup:
+                # Adjust
+                step = step - self.warmup
+                rate = self.lr_decay_rate ** (step // decay_steps)
+            else:
+                rate = 1 - math.exp(-step / self.warmup)
+            return rate
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+
         ret = {
             "optimizer": optimizer,
             "lr_scheduler": {
@@ -351,6 +362,20 @@ class FragGNN(pl.LightningModule):
             },
         }
         return ret
+
+    def lr_scheduler_step(self, scheduler, optimizer_idx, metric):
+        """
+        Custom hook to manually control how/when the scheduler steps.
+
+        Args:
+            scheduler: The scheduler returned in configure_optimizers.
+            optimizer_idx: Which optimizer we’re stepping (relevant if you have multiple).
+            metric: If you had a scheduler that needs a metric value (e.g. ReduceLROnPlateau),
+                    Lightning would pass it here. For LambdaLR, we don’t need it, but we have
+                    access if needed.
+        """
+        # If you want to step every epoch, use:
+        scheduler.step()
 
     def predict_mol(
         self,

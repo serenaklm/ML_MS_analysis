@@ -7,7 +7,8 @@ import pytorch_lightning as pl
 from transformers import AutoTokenizer
 from torch.utils.data import DataLoader
 
-from utils import load_pickle, bin_MS, sort_intensities, pad_mz_intensities, \
+from utils import load_pickle, load_json, \
+                  bin_MS, sort_intensities, pad_mz_intensities, \
                   process_formula, filter_candidates, pad_missing_cand, pad_missing_cand_weight, \
                   tokenize_frags
 
@@ -26,9 +27,7 @@ class Data(object):
 class MSDataset(pl.LightningDataModule):
 
     def __init__(self, dir: str, 
-                       train_folder: str = "", 
-                       val_folder: str = "",
-                       test_folder: str = "",
+                       split_file: str = "", 
                        batch_size: int = 32,
                        num_workers: int = 0,
                        pin_memory: bool = True,
@@ -41,7 +40,6 @@ class MSDataset(pl.LightningDataModule):
                        considered_atoms: List = ["C", "H", "O", "N"],
                        n_frag_candidates: int = 5,
                        chemberta_model: str = "",
-                       mode = "train",
                        return_id_: bool = False,
                        get_CF: bool = False,
                        get_frags: bool = False):
@@ -68,33 +66,23 @@ class MSDataset(pl.LightningDataModule):
         self.get_CF = get_CF
         self.get_frags = get_frags
 
+        # Get the splits 
+        splits = load_json(split_file)
+
         # Get the data 
-        if mode == "train":
-            train = [os.path.join(dir, train_folder, f) for f in os.listdir(os.path.join(dir, train_folder))]
-            val = [os.path.join(dir, val_folder, f) for f in os.listdir(os.path.join(dir, val_folder))]
-            test = [os.path.join(dir, test_folder, f) for f in os.listdir(os.path.join(dir, test_folder))]
+        train = [os.path.join(dir, f) for f in splits["train"]]
+        val = [os.path.join(dir, f) for f in splits["val"]]
+        test = [os.path.join(dir, f) for f in splits["test"]]
 
-            # Prepare splits
-            self._data = train + val + test
-            self._train = train
-            self._val = val
-            self._test = test
+        # Prepare splits
+        self._data = train + val + test
+        self._train = train
+        self._val = val
+        self._test = test
 
-            print("Train length: ", len(self._train))
-            print("Val length: ", len(self._val))
-            print("Test length: ", len(self._test))
-
-        else:
-            assert mode == "inference"
-
-            test = [os.path.join(dir, test_folder, f) for f in os.listdir(os.path.join(dir, test_folder))]
-
-            # Prepare splits
-            self._train = [] 
-            self._val = []
-            self._test = test
-
-            print("Test length: ", len(self._test))
+        print("Train length: ", len(self._train))
+        print("Val length: ", len(self._val))
+        print("Test length: ", len(self._test))
 
         # Load in the tokenizer 
         self.tokenizer = None
@@ -206,8 +194,12 @@ class MSDataset(pl.LightningDataModule):
         mz, intensities, formula, frags_smiles, frags_weight, mask = output
 
         # Skip processing some records
-        assert sum(mask) != len(mask) and sum(binned_MS) != 0.0
-
+        if sum(mask) == len(mask):
+            raise Exception(f"All the peaks for record: {id_} are masked out")
+        
+        if sum(binned_MS) == 0.0:
+            raise Exception(f"All the bins for record: {id_} are 0")
+        
         # Process the formula 
         if formula is not None: formula = [process_formula(f, self.considered_atoms) for f in formula]
 

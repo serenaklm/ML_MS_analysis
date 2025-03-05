@@ -1,4 +1,4 @@
-project: GRAFF_MS
+project: graff_MS
 seed: 17
 
 dataset:
@@ -6,7 +6,7 @@ dataset:
   dataset_name: "massspecgym"
   dataset_labels: "labels.tsv"
   split_name: "inchikey.tsv"
-  form_dir_name: "no_subform"
+  form_dir_name: "subformulae/no_subform"
 
 process_setting: 
   batch_size: 128
