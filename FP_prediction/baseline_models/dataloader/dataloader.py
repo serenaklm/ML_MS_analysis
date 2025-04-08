@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from utils import load_pickle, load_json, \
                   bin_MS, sort_intensities, pad_mz_intensities, \
                   process_formula, filter_candidates, pad_missing_cand, pad_missing_cand_weight, \
-                  tokenize_frags
+                  tokenize_frags, parse_adduct_contents
 
 class Data(object):
 
@@ -27,7 +27,9 @@ class Data(object):
 class MSDataset(pl.LightningDataModule):
 
     def __init__(self, dir: str, 
-                       split_file: str = "", 
+                       split_file: str = "",
+                       adduct_file: str = "",
+                       instrument_file: str = "",
                        batch_size: int = 32,
                        num_workers: int = 0,
                        pin_memory: bool = True,
@@ -69,6 +71,10 @@ class MSDataset(pl.LightningDataModule):
         # Get the splits 
         splits = load_json(split_file)
 
+        # Get the adducts and instruments 
+        self.adducts = load_pickle(adduct_file)
+        self.instruments = load_pickle(instrument_file)
+
         # Get the data 
         train = [os.path.join(dir, f) for f in splits["train"]]
         val = [os.path.join(dir, f) for f in splits["val"]]
@@ -88,7 +94,12 @@ class MSDataset(pl.LightningDataModule):
         self.tokenizer = None
         if self.get_frags:           
             self.tokenizer = AutoTokenizer.from_pretrained(chemberta_model)
- 
+    
+    @property 
+    def data(self) -> List: 
+        """The entire dataset. """
+        return self._data 
+    
     @property
     def train_data(self) -> List:
         """The validation data."""
@@ -131,6 +142,25 @@ class MSDataset(pl.LightningDataModule):
         else:
             raise Exception(f"{self.intensity_type} not supported.")
 
+    def _process_energy(self, energy):
+        
+        try:
+            energy = float(energy)
+        except:
+            return 9 # not a float 
+        
+        # Give 5 different energy bins
+        if energy < 30: return 0 
+        elif energy < 45: return 1 
+        elif energy < 60: return 2
+        elif energy < 75: return 3 
+        elif energy < 90: return 4
+        elif energy < 105: return 5 
+        elif energy < 120: return 6 
+        elif energy < 135: return 7 
+        elif energy < 150: return 8 
+        else: return 9 
+
     def process(self, filepath: Any) -> Any:
 
         """Processes a single data sample"""
@@ -138,6 +168,11 @@ class MSDataset(pl.LightningDataModule):
 
         # Get the id_ 
         id_ = sample["id_"]
+
+        # Model some meta information like adduct, CE and instrument
+        adduct = self.adducts[sample["precursor_type"]]
+        CE = self._process_energy(sample["collision_energy"])
+        instrument = self.instruments[sample["instrument_type"]]
 
         # Get the mz and intensities
         peaks = sample["peaks"]
@@ -216,7 +251,10 @@ class MSDataset(pl.LightningDataModule):
                "intensities": torch.tensor(intensities, dtype=torch.float),
                "mask": torch.tensor(mask, dtype=torch.bool),
                "binned_MS": torch.tensor(binned_MS, dtype = torch.float),
-               "FP": torch.tensor(FP, dtype = torch.float)}
+               "FP": torch.tensor(FP, dtype = torch.float),
+               "adduct": torch.tensor(adduct, dtype=torch.int),
+               "CE": torch.tensor(CE, dtype=torch.int),
+               "instrument": torch.tensor(instrument, dtype=torch.int)}
 
         if self.return_id_: rec["id_"] = id_
         if formula is not None: rec["formula"] = torch.tensor(formula, dtype=torch.float)

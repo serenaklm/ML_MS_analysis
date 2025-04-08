@@ -2,6 +2,7 @@ import os
 import copy
 import yaml
 import argparse
+from datetime import datetime
 
 import pandas as pd
 from pathlib import Path
@@ -12,6 +13,7 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
@@ -131,14 +133,11 @@ def train(config):
     # Set a random seed 
     seed_everything(config["seed"])
 
-    # Get the name of the dataset and the split 
-    dataset = config["dataset"]["dataset_name"]
-    split = config["dataset"]["split_name"].replace(".tsv", "")
-
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"], "gen")
-    expt_name = f"{dataset}_{split}"
-
+    expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    results_dir = os.path.join(results_dir, expt_name)
+    
     create_results_dir(results_dir)
 
     # Get the wandb logger 
@@ -204,6 +203,7 @@ if __name__ == "__main__":
 
     # Update the config 
     config["args"] = args.__dict__
+    config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
 
     # Run the trainer now 
     train(config)

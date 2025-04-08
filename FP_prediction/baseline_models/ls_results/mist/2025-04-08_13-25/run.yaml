@@ -1,0 +1,74 @@
+callbacks:
+  monitor: val_average_loss
+  patience: 20
+data:
+  FP_type: morgan4_4096
+  batch_size: 512
+  bin_resolution: 0.25
+  chemberta_model: /data/rbg/users/klingmin/projects/ML_MS_analysis/pretrained_models/ChemBERTa-zinc-base-v1
+  considered_atoms:
+  - C
+  - H
+  - O
+  - N
+  - S
+  - Cl
+  - Br
+  - F
+  - P
+  - I
+  - K
+  - Si
+  - Na
+  - Sn
+  data_folder: /data/rbg/users/klingmin/projects/MS_processing/data/
+  dataset: nist2023
+  intensity_threshold: 5.0
+  intensity_type: raw
+  max_MS_peaks: 30
+  max_da: 2000
+  n_frag_candidates: 5
+  num_workers: 4
+  split_file: inchikey_vanilla.json
+  splits_folder: /data/rbg/users/klingmin/projects/MS_processing/data_splits/
+device: 6
+exp_name: 2025-04-08_13-25
+model:
+  MS_encoder:
+    dropout_rate: 0.2
+    hidden_dim: 1024
+    model_dim: 256
+    n_heads: 8
+    n_layers: 8
+  binned_MS_encoder:
+    dropout_rate: 0.2
+    hidden_dim: 1024
+    model_dim: 256
+  feats_params:
+    include_CE: true
+    include_adduct: true
+    include_instrument: true
+  name: formula_encoder
+project: LS
+seed: 17
+splitter:
+  clip_grad_norm: 0
+  convergence_threshold: 0.003
+  num_batches: 100
+  patience: 5
+  train_ratio: 0.8
+  w_balance: 1.0
+  w_gap: 1.0
+  w_ratio: 1.0
+train_params:
+  lr: 0.0005
+  n_outer_loops: 500
+  pos_weight: 10.0
+  reconstruction_weight: 1.0
+  train_ratio: 0.8
+  weight_decay: 5.0e-05
+trainer:
+  accelerator: gpu
+  devices: 4
+  log_every_n_steps: 5
+  max_epochs: 500

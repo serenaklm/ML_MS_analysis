@@ -16,7 +16,13 @@ class MSBinnedModel(pl.LightningModule):
                        output_dim: int = 1024,
                        pos_weight: float = 1.0,
                        reconstruction_weight: float = 1.0,
-                       dropout_rate: float = 0.2):
+                       dropout_rate: float = 0.2,
+                       include_adduct: bool = False,
+                       include_CE: bool = False, 
+                       include_instrument: bool = False,
+                       n_adducts: int = 10, 
+                       n_CEs: int = 10,
+                       n_instruments: int = 10):
         
         super().__init__()
         self.save_hyperparameters()
@@ -27,12 +33,19 @@ class MSBinnedModel(pl.LightningModule):
         self.output_dim = output_dim
         self.pos_weight = pos_weight
         self.reconstruction_weight = reconstruction_weight
+        self.include_adduct = include_adduct
+        self.include_CE = include_CE
+        self.include_instrument = include_instrument
         
         # Get a mean logger 
         self.avg_loss_train, self.avg_loss_val = [], []
 
         # Get the MLP 
-        self.MLP = nn.Sequential(nn.Linear(input_dim, model_dim),
+        feats_emb = 0
+        if self.include_CE: feats_emb += model_dim
+        if self.include_adduct: feats_emb += model_dim
+        if self.include_instrument: feats_emb += model_dim
+        self.MLP = nn.Sequential(nn.Linear(input_dim + feats_emb, model_dim),
                                  nn.GELU(),
                                  nn.Dropout(dropout_rate),
                                  nn.Linear(model_dim, hidden_dim),
@@ -41,6 +54,7 @@ class MSBinnedModel(pl.LightningModule):
                                  nn.Linear(hidden_dim, hidden_dim),
                                  nn.GELU(),
                                  nn.Linear(hidden_dim, model_dim),
+                                 nn.GELU(),
                                  nn.Dropout(dropout_rate))
 
         self.pred_layer = nn.Sequential(nn.Linear(model_dim, hidden_dim),
@@ -54,34 +68,57 @@ class MSBinnedModel(pl.LightningModule):
                                                        nn.Dropout(dropout_rate),
                                                        nn.Linear(hidden_dim, input_dim))
 
-    def forward(self, binned_ms):
+        # Get embeddings for the adducts, CEs and instruments 
+        if self.include_adduct: self.adduct_embs = nn.Embedding(n_adducts, model_dim)
+        if self.include_CE: self.CE_embs = nn.Embedding(n_CEs, model_dim)
+        if self.include_instrument: self.instrument_embs = nn.Embedding(n_instruments, model_dim)
+
+    def forward(self, binned_ms, adduct, CE, instrument):
 
         # Get the embeddings 
-        binned_ms_emb = self.MLP(binned_ms)
+        if self.include_adduct: binned_ms = torch.concat([binned_ms, self.adduct_embs(adduct)], dim = -1)
+        if self.include_CE: binned_ms = torch.concat([binned_ms, self.CE_embs(CE)], dim = -1)
+        if self.include_instrument: binned_ms = torch.concat([binned_ms, self.instrument_embs(instrument)], dim = -1)
+        emb = self.MLP(binned_ms)
 
         # Get the FP prediction 
-        FP_pred = self.pred_layer(binned_ms_emb)
+        FP_pred = self.pred_layer(emb)
 
         # Get the reconstruction prediction
-        binned_ms_pred = self.reconstruction_pred_layer(binned_ms_emb)
+        binned_ms_pred = self.reconstruction_pred_layer(emb)
 
         return FP_pred, binned_ms_pred 
 
     def compute_loss(self, FP_pred, FP):
 
-        pos_weight = FP.detach().clone() * self.pos_weight
-
-        # Let us try upweighing the positive bits 
-        loss_no_reduction = F.binary_cross_entropy_with_logits(FP_pred, FP, reduction = "none")
-        loss_pos = (loss_no_reduction * pos_weight).sum(-1).mean(-1)
+        # Up weigh positive bits
+        pos_weight = FP.clone().detach() * (self.pos_weight - 1) # to avoid double counting
+        loss_pos = F.binary_cross_entropy_with_logits(FP_pred, FP, reduction = "none")
+        loss_pos = (loss_pos * pos_weight)
         
-        # Get the loss without upweighing the positive bits
-        loss_reduced = F.binary_cross_entropy_with_logits(FP_pred, FP, reduction = "none").sum(-1).mean(-1)
+        # Get loss for negative bits
+        loss_neg = F.binary_cross_entropy_with_logits(FP_pred, FP, reduction = "none")
 
         # Combine the loss 
-        loss = loss_pos + loss_reduced 
+        loss = loss_pos + loss_neg
+        loss = loss.mean()
 
         return loss
+    
+    def get_output(self, batch):
+
+        # Unpack the batch 
+        binned_ms = batch["binned_MS"]
+
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
+        # Forward pass
+        FP_pred, _ = self(binned_ms, adduct, CE, instrument)
+
+        return FP_pred
     
     def training_step(self, batch, batch_idx):
 
@@ -91,8 +128,13 @@ class MSBinnedModel(pl.LightningModule):
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
         # Forward pass
-        FP_pred, binned_ms_pred = self(binned_ms)
+        FP_pred, binned_ms_pred = self(binned_ms, adduct, CE, instrument)
         print("Train", FP_pred)
 
         # Compute the FP prediction loss 
@@ -121,8 +163,13 @@ class MSBinnedModel(pl.LightningModule):
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
         # Forward pass
-        FP_pred, binned_ms_pred = self(binned_ms)
+        FP_pred, binned_ms_pred = self(binned_ms, adduct, CE, instrument)
         print("Val", FP_pred)
 
         # Compute the FP prediction loss 

@@ -46,7 +46,13 @@ class FormulaTransformerEncoder(pl.LightningModule):
                        output_dim: int = 2048,
                        pos_weight: float = 1.0,
                        reconstruction_weight: float = 1.0,
-                       dropout_rate: float = 0.2):
+                       dropout_rate: float = 0.2,
+                       include_adduct: bool = False,
+                       include_CE: bool = False, 
+                       include_instrument: bool = False,
+                       n_adducts: int = 10, 
+                       n_CEs: int = 10,
+                       n_instruments: int = 10):
         
         super().__init__()
         self.save_hyperparameters()
@@ -59,6 +65,9 @@ class FormulaTransformerEncoder(pl.LightningModule):
         self.output_dim = output_dim
         self.pos_weight = pos_weight
         self.reconstruction_weight = reconstruction_weight
+        self.include_adduct = include_adduct
+        self.include_CE = include_CE
+        self.include_instrument = include_instrument
 
         # Get a mean logger 
         self.avg_loss_train, self.avg_loss_val = [], []
@@ -76,7 +85,11 @@ class FormulaTransformerEncoder(pl.LightningModule):
         encoder_layer = nn.TransformerEncoderLayer(d_model = model_dim, nhead = n_heads, batch_first = True)
         self.MS_encoder = nn.TransformerEncoder(encoder_layer, num_layers = n_layers)
 
-        self.binned_ms_encoder = nn.Sequential(nn.Linear(input_dim, model_dim),
+        feats_emb = 0
+        if self.include_CE: feats_emb += model_dim
+        if self.include_adduct: feats_emb += model_dim
+        if self.include_instrument: feats_emb += model_dim
+        self.binned_ms_encoder = nn.Sequential(nn.Linear(input_dim + feats_emb, model_dim),
                                                nn.GELU(),
                                                nn.Dropout(dropout_rate),
                                                nn.Linear(model_dim, hidden_dim),
@@ -97,11 +110,19 @@ class FormulaTransformerEncoder(pl.LightningModule):
                                                        nn.GELU(),
                                                        nn.Dropout(dropout_rate),
                                                        nn.Linear(hidden_dim, input_dim))
-        
-    def forward(self, intensities, formula, mask, binned_ms):
 
-        # Get binned MS emb
-        binned_ms_emb = self.binned_ms_encoder(binned_ms)
+        # Get embeddings for the adducts, CEs and instruments 
+        if self.include_adduct: self.adduct_embs = nn.Embedding(n_adducts, model_dim)
+        if self.include_CE: self.CE_embs = nn.Embedding(n_CEs, model_dim)
+        if self.include_instrument: self.instrument_embs = nn.Embedding(n_instruments, model_dim)
+
+    def forward(self, intensities, formula, mask, binned_ms, adduct, CE, instrument):
+
+        # Get the embeddings 
+        if self.include_adduct: binned_ms = torch.concat([binned_ms, self.adduct_embs(adduct)], dim = -1)
+        if self.include_CE: binned_ms = torch.concat([binned_ms, self.CE_embs(CE)], dim = -1)
+        if self.include_instrument: binned_ms = torch.concat([binned_ms, self.instrument_embs(instrument)], dim = -1)
+        emb = self.binned_ms_encoder(binned_ms)
         
         # Get features for the MS 
         formula_emb = self.formula_encoder(formula)
@@ -114,7 +135,7 @@ class FormulaTransformerEncoder(pl.LightningModule):
         MS_emb = MS_emb[:, 0, :]
 
         # Merge the features together
-        feats = torch.concat([MS_emb, binned_ms_emb], dim = -1)
+        feats = torch.concat([MS_emb, emb], dim = -1)
 
         # Get the FP prediction 
         FP_pred = self.pred_layer(feats)
@@ -126,20 +147,36 @@ class FormulaTransformerEncoder(pl.LightningModule):
 
     def compute_loss(self, FP_pred, FP):
 
-        pos_weight = FP.detach().clone() * self.pos_weight
-
-        # Let us try upweighing the positive bits 
-        loss_no_reduction = F.binary_cross_entropy_with_logits(FP_pred, FP, reduction = "none")
-        loss_pos = (loss_no_reduction * pos_weight).sum(-1).mean(-1)
+        # Up weigh positive bits
+        pos_weight = FP.clone().detach() * (self.pos_weight - 1) # to avoid double counting
+        loss_pos = F.binary_cross_entropy_with_logits(FP_pred, FP, reduction = "none")
+        loss_pos = (loss_pos * pos_weight)
         
-        # Get the loss without upweighing the positive bits
-        loss_reduced = F.binary_cross_entropy_with_logits(FP_pred, FP, reduction = "none").sum(-1).mean(-1)
+        # Get loss for negative bits
+        loss_neg = F.binary_cross_entropy_with_logits(FP_pred, FP, reduction = "none")
 
         # Combine the loss 
-        loss = loss_pos + loss_reduced 
+        loss = loss_pos + loss_neg
+        loss = loss.mean()
 
         return loss
-    
+
+    def get_output(self, batch):
+
+        # Unpack the batch 
+        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
+        binned_ms = batch["binned_MS"]
+
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
+        # Forward pass
+        FP_pred, _ = self(intensities, formula, mask, binned_ms, adduct, CE, instrument)
+
+        return FP_pred
+
     def training_step(self, batch, batch_idx):
 
         # Unpack the batch 
@@ -147,8 +184,13 @@ class FormulaTransformerEncoder(pl.LightningModule):
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
         # Forward pass
-        FP_pred, binned_ms_pred = self(intensities, formula, mask, binned_ms)
+        FP_pred, binned_ms_pred = self(intensities, formula, mask, binned_ms, adduct, CE, instrument)
 
         # Compute the FP prediction loss 
         FP_loss = self.compute_loss(FP_pred, FP)
@@ -175,8 +217,13 @@ class FormulaTransformerEncoder(pl.LightningModule):
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
         # Forward pass
-        FP_pred, binned_ms_pred = self(intensities, formula, mask, binned_ms)
+        FP_pred, binned_ms_pred = self(intensities, formula, mask, binned_ms, adduct, CE, instrument)
 
         # Compute the FP prediction loss 
         FP_loss = self.compute_loss(FP_pred, FP)

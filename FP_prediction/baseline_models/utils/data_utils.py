@@ -60,6 +60,87 @@ def process_formula(formula, considered_atoms):
     
     return element_counts
 
+def parse_formula(formula_str):
+
+    pattern = r"([A-Z][a-z]?)(\d*)"
+    tokens = re.findall(pattern, formula_str)
+    formula_dict = {}
+    for (element, count_str) in tokens:
+        count = int(count_str) if count_str else 1
+        formula_dict[element] = formula_dict.get(element, 0) + count
+    return formula_dict
+
+def formula_dict_to_str(formula_dict):
+
+    def hill_sort_key(element):
+        if element == "C":
+            return (0, element)
+        elif element == "H":
+            return (1, element)
+        else:
+            return (2, element)
+    
+    # Filter out elements that have zero or negative counts (just in case)
+    cleaned = {el: cnt for el, cnt in formula_dict.items() if cnt > 0}
+    
+    # Sort elements according to the partial Hill order
+    sorted_elements = sorted(cleaned.keys(), key=hill_sort_key)
+    
+    # Build output string
+    output_str = ""
+    for el in sorted_elements:
+        cnt = cleaned[el]
+        if cnt == 1:
+            output_str += f"{el}"
+        else:
+            output_str += f"{el}{cnt}"
+    return output_str
+
+def parse_adduct_contents(adduct_inside):
+
+    adduct_inside = adduct_inside.strip()
+    if not adduct_inside:
+        return (1, {}) 
+    
+    if not (adduct_inside.startswith('+') or adduct_inside.startswith('-')):
+        adduct_inside = '+' + adduct_inside
+
+    chunks = re.split(r'(?=[+-])', adduct_inside)
+    chunks = [ch.strip() for ch in chunks if ch.strip()]
+    
+    m_multiplier = 0
+    changes = {}
+    
+    for ch in chunks:
+        sign = 1 if ch.startswith('+') else -1
+        body = ch[1:].strip()
+
+        match = re.match(r'^(\d+)?M$', body)
+
+        if match:
+            factor_str = match.group(1)
+            factor = int(factor_str) if factor_str else 1
+            m_multiplier += sign * factor
+            continue
+        
+        fmatch = re.match(r'^(\d+)([A-Za-z].*)$', body)
+        if fmatch:
+            factor = int(fmatch.group(1))
+            formula_part = fmatch.group(2)
+        else:
+            factor = 1
+            formula_part = body
+        
+        sub_dict = parse_formula(formula_part)
+        
+        for e, c in sub_dict.items():
+            changes[e] = changes.get(e, 0) + sign * factor * c
+
+    if m_multiplier == 0:
+        m_multiplier = 1
+    
+    return (m_multiplier, changes)
+
 # For reading in of MS data in .mgf or .msp format
 def get_all_spectra(path):
 

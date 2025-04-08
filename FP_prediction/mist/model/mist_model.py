@@ -1,6 +1,7 @@
 """ mist_model.py
 """
 import math 
+from functools import partial
 from typing import Optional, List, Tuple
 import torch
 from torch import nn
@@ -18,6 +19,21 @@ def cosine_loss(x, y):
     return 1 - cosine_sim(
         x.expand(y.shape), y.float()
     ).unsqueeze(-1)
+
+def BCE_loss(FP_pred, FP, pos_weight = 5):
+
+    # Up weigh positive bits
+    pos_weight = FP.clone().detach() * (pos_weight - 1) # to avoid double counting
+    loss_pos = F.binary_cross_entropy(FP_pred, FP, reduction = "none")
+    loss_pos = (loss_pos * pos_weight)
+    
+    # Get loss for negative bits
+    loss_neg = F.binary_cross_entropy(FP_pred, FP, reduction = "none")
+
+    # Combine the loss 
+    loss = loss_pos + loss_neg
+
+    return loss
 
 def build_lr_scheduler(
     optimizer, lr_decay_frac: float, decay_steps: int = 10000, warmup: int = 100
@@ -56,6 +72,7 @@ class MistNet(pl.LightningModule):
         fp_names: List[str] = ["morgan2048"],
         binarization_thresh: float = 0.5,
         loss_fn: str = "bce",
+        pos_weight: int = 5, 
         
         hidden_size: int = 128,
         peak_attn_layers: int = 2,
@@ -107,7 +124,7 @@ class MistNet(pl.LightningModule):
         self.thresh = binarization_thresh
 
         # BCE loss
-        self.bce_loss = nn.BCELoss(reduction="none")
+        self.bce_loss = partial(BCE_loss, pos_weight = pos_weight)
         self.loss_name = loss_fn
         self.cosine_loss = cosine_loss
 
@@ -289,6 +306,7 @@ class MistNet(pl.LightningModule):
         fp_loss, magma_loss, iterative_loss = None, None, None
 
         # Get FP Loss
+        print(pred_fp)
         fp_loss_full = self.loss_fn(pred_fp, target_fp)
         fp_loss = fp_loss_full.mean(-1)
         pred_frag_fps = aux_outputs_spec.get("pred_frag_fps", None)
@@ -374,6 +392,12 @@ class MistNet(pl.LightningModule):
 
         return ret_dict
 
+    def get_output(self, batch):
+
+        pred_fp, _ = self.encode_spectra(batch)
+
+        return pred_fp
+
     def training_step(self, batch, batch_idx):
         """training_step.
 
@@ -394,13 +418,17 @@ class MistNet(pl.LightningModule):
         norm_inds = mol_inds[batch["matched"]]
         target_fp = target_fp_all[norm_inds]
 
+        # Get the magma fingerprints 
+        magma_fingerprints = batch.get("fingerprints")
+        magma_fingerprints[magma_fingerprints == -1] = 0
+        
         # Compute loss and log
         ret_dict = self.compute_loss(
             pred_fp,
             target_fp,
             aux_outputs_mol=aux_outputs_mol,
             aux_outputs_spec=aux_outputs_spec,
-            fingerprints=batch.get("fingerprints"),
+            fingerprints=magma_fingerprints,
             fingerprint_mask=batch.get("fingerprint_mask"),
             train_step=True,
         )
@@ -426,13 +454,18 @@ class MistNet(pl.LightningModule):
         mol_inds = batch["mol_indices"]
         norm_inds = mol_inds[batch["matched"]]
         target_fp = target_fp_all[norm_inds]
+
+        # Get the magma fingerprints 
+        magma_fingerprints = batch.get("fingerprints")
+        magma_fingerprints[magma_fingerprints == -1] = 0
+
         # Compute loss and log
         ret_dict = self.compute_loss(
             pred_fp,
             target_fp,
             aux_outputs_mol=aux_outputs_mol,
             aux_outputs_spec=aux_outputs_spec,
-            fingerprints=batch.get("fingerprints"),
+            fingerprints=magma_fingerprints,
             fingerprint_mask=batch.get("fingerprint_mask"),
             train_step=False,
         )

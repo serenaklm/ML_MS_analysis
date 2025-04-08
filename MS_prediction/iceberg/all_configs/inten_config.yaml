@@ -1,4 +1,4 @@
-project: ICEBERG_INTEN
+project: iceberg_inten
 seed: 17
 
 dataset:
@@ -6,10 +6,10 @@ dataset:
   dataset_name: "massspecgym"
   dataset_labels: "labels.tsv"
   magma_dag_folder: "magma_outputs/magma_tree"
-  split_name: "inchikey.tsv"
+  split_name: "random.tsv"
 
 process_setting: 
-  batch_size: 32
+  batch_size: 128
   num_workers: 16
   binned_targs: True
   add_hs: True
@@ -18,7 +18,7 @@ process_setting:
 
 model:
   
-  name: ""
+  name: "iceberg_inten"
 
   params: 
     hidden_size: 256
@@ -43,8 +43,8 @@ model:
     add_hs: True
 
 trainer:
-  max_epochs: 100
-  devices: 4
+  max_epochs: 200
+  devices: 2
   accelerator: "gpu"
   log_every_n_steps: 50
   gradient_clip_val: 5 

@@ -137,13 +137,11 @@ def train(config):
     # Set a random seed 
     seed_everything(config["seed"])
 
-    # Get the name of the dataset and the split 
-    dataset = config["dataset"]["dataset_name"]
-    split = config["dataset"]["split_name"].replace(".tsv", "")
-
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"], "inten")
-    expt_name = f"{dataset}_{split}"
+    expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    results_dir = os.path.join(results_dir, expt_name)
+    
     create_results_dir(results_dir)
 
     # Get the wandb logger 
@@ -209,6 +207,7 @@ if __name__ == "__main__":
 
     # Update the config 
     config["args"] = args.__dict__
+    config["model"]["params"]["weight_decay"] = float(config["model"]["params"]["weight_decay"])
 
     # Run the trainer now 
     train(config)

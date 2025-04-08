@@ -13,11 +13,9 @@ from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
-from utils import read_config
 from dataloader import MSDataset
-from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder, FragTransformerEncoder
-
-os.environ['TRANSFORMERS_CACHE'] = "/data/rbg/users/klingmin/transformers_cache"
+from utils import read_config, load_pickle
+from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder
 
 @rank_zero_only
 def write_config(wandb_logger, config):
@@ -59,6 +57,20 @@ def update_config(args, config):
     if args.disable_checkpoint:
         config["trainer"]["enable_checkpointing"] = False
 
+    # Update the data directory 
+    config["data"]["dir"] = os.path.join(config["data"]["data_folder"], config["data"]["dataset"], "frags_preds")
+    config["data"]["split_file"] = os.path.join(config["data"]["splits_folder"], config["data"]["dataset"], "splits", config["data"]["split_file"])
+    config["data"]["adduct_file"] = os.path.join(config["data"]["data_folder"], config["data"]["dataset"], "all_adducts.pkl")
+    config["data"]["instrument_file"] = os.path.join(config["data"]["data_folder"], config["data"]["dataset"], "all_instruments.pkl")
+    del config["data"]["dataset"]
+    del config["data"]["data_folder"]
+    del config["data"]["splits_folder"]
+
+    # Read in the adduct and instrument file 
+    n_adducts = len(load_pickle(config["data"]["adduct_file"]))
+    n_CEs = 10 
+    n_instruments = len(load_pickle(config["data"]["instrument_file"]))
+
     # Get the FP_dim_mapping
     FP_dim_mapping = {"MACCS": 167,
                       "morgan4_256": 256,
@@ -76,12 +88,8 @@ def update_config(args, config):
     config["model"]["formula_encoder"] = copy.deepcopy(config["model"]["MS_encoder"])
     config["model"]["formula_encoder"]["n_atoms"] = len(config["data"]["considered_atoms"])
 
-    # Update config for frag_encoder
-    config["model"]["frag_encoder"] = copy.deepcopy(config["model"]["MS_encoder"])
-    config["model"]["frag_encoder"]["chemberta_model"] = config["data"]["chemberta_model"]
-
     # Update params for all models 
-    all_models = ["binned_MS_encoder", "MS_encoder", "formula_encoder", "frag_encoder"]
+    all_models = ["binned_MS_encoder", "MS_encoder", "formula_encoder"]
     for m in all_models:
 
         # Update the input_dim 
@@ -100,13 +108,44 @@ def update_config(args, config):
         config["model"][m]["output_dim"] = FP_dim_mapping[config["data"]["FP_type"]]
 
         # Update getting the CF, fragments etc 
-        config["data"]["get_CF"] = config["data"]["get_frags"] = False  
-    
+        config["data"]["get_CF"] = config["data"]["get_frags"] = False
+
+        # Update including the energy, adduct and instrument 
+        config["model"][m]["include_adduct"] = config["model"]["feats_params"]["include_adduct"]  
+        config["model"][m]["include_CE"] = config["model"]["feats_params"]["include_CE"]  
+        config["model"][m]["include_instrument"] = config["model"]["feats_params"]["include_instrument"]
+        config["model"][m]["n_adducts"] = n_adducts
+        config["model"][m]["n_CEs"] = n_CEs
+        config["model"][m]["n_instruments"] = n_instruments
+
     # Update getting the CF, fragments for each individual model 
     if config["model"]["name"] == "formula_encoder": config["data"]["get_CF"] = True 
-    if config["model"]["name"] == "frag_encoder": config["data"]["get_frags"] = True 
 
     return config
+
+def get_exp_name(config):
+
+    dataset_code = ""
+
+    if "canopus" in config["data"]["dir"]: dataset_code = "C"
+    elif "massspecgym" in config["data"]["dir"]: dataset_code = "MSG"
+    elif "nist2023" in config["data"]["dir"]: dataset_code = "NIST2023"
+    else: raise Exception("Dataset not recognized - ", config["data"]["dataset"])
+
+    model_code = ""
+    if config["model"]["name"] == "binned_MS_encoder": model_code = "binned"
+    elif config["model"]["name"] == "MS_encoder": model_code = "MS"
+    elif config["model"]["name"] == "formula_encoder": model_code = "formula"
+
+    split_code = config["data"]["split_file"].split("/")[-1].replace(".json", "")
+
+    if "w_meta" in config["args"]["config_file"]:
+        name = f"{dataset_code}_{model_code}_meta_4096_{split_code}"
+    else: 
+        assert "wo_meta" in config["args"]["config_file"]
+        name = f"{dataset_code}_{model_code}_4096_{split_code}"
+
+    return name 
 
 def train(config):  
 
@@ -115,7 +154,7 @@ def train(config):
 
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"], config["model"]["name"])
-    expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    expt_name = get_exp_name(config)
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
 
@@ -168,9 +207,6 @@ def train(config):
     elif model_name == "formula_encoder":
         model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["model"]["train_params"]["lr"], 
                                                                                 weight_decay = config["model"]["train_params"]["weight_decay"])
-    elif model_name == "frag_encoder":
-        model = FragTransformerEncoder(**config["model"]["frag_encoder"], lr = config["model"]["train_params"]["lr"], 
-                                                                          weight_decay = config["model"]["train_params"]["weight_decay"])    
     else:
         raise Exception(f"{model_name} not supported.")
     
@@ -181,7 +217,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_dir", type = str, default = "./all_configs", help = "Config directory")
-    parser.add_argument("--config_file", type = str, default = "base_config.yaml", help = "Config file")
+    parser.add_argument("--config_file", type = str, default = "wo_meta_config.yaml", help = "Config file")
     parser.add_argument("--torch_hub_cache", type = str, default = "./cache", help = "Torch hub cache directory")
     parser.add_argument("--results_dir", type = str, default = "./results", help = "Results output directory")
     parser.add_argument("--debug", action = "store_true", default = False, help = "Set debug mode")

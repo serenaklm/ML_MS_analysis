@@ -363,7 +363,7 @@ class FragGNN(pl.LightningModule):
         }
         return ret
 
-    def lr_scheduler_step(self, scheduler, optimizer_idx, metric):
+    def lr_scheduler_step(self, scheduler, metric):
         """
         Custom hook to manually control how/when the scheduler steps.
 

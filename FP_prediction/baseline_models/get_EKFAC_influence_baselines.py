@@ -15,6 +15,12 @@ from utils import read_config, load_pickle, pickle_data, replace_MS_encoder_laye
 
 class TaskBinnedMS(Task):
 
+    def __init__(self, include_adduct, include_CE, include_instrument):
+        super().__init__()
+        self.include_adduct = include_adduct
+        self.include_CE = include_CE
+        self.include_instrument = include_instrument
+
     def compute_train_loss(self,
         batch: Any,
         model: nn.Module,
@@ -24,8 +30,13 @@ class TaskBinnedMS(Task):
         FP = batch["FP"]
         binned_ms = batch["binned_MS"]
 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
         # Forward pass
-        FP_pred, binned_ms_pred = model(binned_ms)
+        FP_pred, binned_ms_pred = model(binned_ms, adduct, CE, instrument)
 
         # Get the loss
         reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
@@ -38,8 +49,13 @@ class TaskBinnedMS(Task):
         batch: Any,
         model: nn.Module) -> torch.Tensor:
 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
         # Forward pass 
-        FP_pred, binned_ms_pred = model(batch["binned_MS"])
+        FP_pred, binned_ms_pred = model(batch["binned_MS"], adduct, CE, instrument)
 
         # Get the loss 
         reconstruction_loss = F.mse_loss(binned_ms_pred, batch["binned_MS"])
@@ -47,15 +63,19 @@ class TaskBinnedMS(Task):
 
         return FP_loss + 0.1 * reconstruction_loss
 
-    # def get_influence_tracked_modules(self) -> Optional[List[str]]:
-    #     # TODO: [Optional] Complete this method.
-    #     return None  # Compute influence scores on all available modules.
+    def get_influence_tracked_modules(self) -> Optional[List[str]]:
+        return None
 
-    # def get_attention_mask(self, batch: Any) -> Optional[Union[Dict[str, torch.Tensor], torch.Tensor]]:
-    #     # TODO: [Optional] Complete this method.
-    #     return None  # Attention mask not used.
+    def get_attention_mask(self, batch: Any) -> Optional[Union[Dict[str, torch.Tensor], torch.Tensor]]:
+        return None
 
 class TaskMS(Task):
+
+    def __init__(self, include_adduct, include_CE, include_instrument):
+        super().__init__()
+        self.include_adduct = include_adduct
+        self.include_CE = include_CE
+        self.include_instrument = include_instrument
 
     def compute_train_loss(self,
         batch: Any,
@@ -67,8 +87,13 @@ class TaskMS(Task):
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
         # Forward pass
-        FP_pred, binned_ms_pred = model(mz, intensities, mask, binned_ms)
+        FP_pred, binned_ms_pred = model(mz, intensities, mask, binned_ms, adduct, CE, instrument)
         
         # Get loss
         reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
@@ -86,8 +111,13 @@ class TaskMS(Task):
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
         # Forward pass
-        FP_pred, binned_ms_pred = model(mz, intensities, mask, binned_ms)
+        FP_pred, binned_ms_pred = model(mz, intensities, mask, binned_ms, adduct, CE, instrument)
         
         # Get loss
         reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
@@ -123,6 +153,12 @@ class TaskMS(Task):
 
 class TaskFormula(Task):
 
+    def __init__(self, include_adduct, include_CE, include_instrument):
+        super().__init__()
+        self.include_adduct = include_adduct
+        self.include_CE = include_CE
+        self.include_instrument = include_instrument
+
     def compute_train_loss(self,
         batch: Any,
         model: nn.Module,
@@ -133,7 +169,12 @@ class TaskFormula(Task):
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
-        FP_pred, binned_ms_pred = model(intensities, formula, mask, binned_ms)
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
+        FP_pred, binned_ms_pred = model(intensities, formula, mask, binned_ms, adduct, CE, instrument)
 
         # Get loss
         reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
@@ -151,8 +192,13 @@ class TaskFormula(Task):
         binned_ms = batch["binned_MS"]
         FP = batch["FP"]
 
-        FP_pred, binned_ms_pred = model(intensities, formula, mask, binned_ms)
-        
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
+        FP_pred, binned_ms_pred = model(intensities, formula, mask, binned_ms, adduct, CE, instrument)
+
         # Get loss
         reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
         FP_loss = F.binary_cross_entropy_with_logits(FP_pred, FP)
@@ -223,22 +269,22 @@ def get_datasets(folder, params, top_k):
     
     return train_data, test_data, train_files_to_analyze, test_files_to_analyze
 
-def get_modules(model_cache_folder, params, top_k):
+def get_modules(model_cache_folder, params, top_k, include_adduct, include_CE, include_instrument):
 
     model_path = get_checkpoint_path(model_cache_folder)
 
     model_name = params["model"]["name"] 
     if model_name == "binned_MS_encoder":
         model = MSBinnedModel.load_from_checkpoint(model_path).train()
-        task = TaskBinnedMS()
+        task = TaskBinnedMS(include_adduct, include_CE, include_instrument)
 
     elif model_name == "MS_encoder":
         model = MSTransformerEncoder.load_from_checkpoint(model_path).train()
-        task = TaskMS()
+        task = TaskMS(include_adduct, include_CE, include_instrument)
 
     elif model_name == "formula_encoder":
         model = FormulaTransformerEncoder.load_from_checkpoint(model_path).train()
-        task = TaskFormula()
+        task = TaskFormula(include_adduct, include_CE, include_instrument)
 
     else:
         raise NotImplementedError()
@@ -252,8 +298,22 @@ def get_influence_scores(folder, output_path, top_k):
     # Get the parameters 
     params = read_config(folder / "run.yaml")
 
+    # Update the params
+    params["data"]["dir"] = os.path.join(params["data"]["data_folder"], params["data"]["dataset"], "frags_preds")
+    params["data"]["split_file"] = os.path.join(params["data"]["splits_folder"], params["data"]["dataset"], "splits", params["data"]["split_file"])
+    params["data"]["adduct_file"] = os.path.join(params["data"]["data_folder"], params["data"]["dataset"], "all_adducts.pkl")
+    params["data"]["instrument_file"] = os.path.join(params["data"]["data_folder"], params["data"]["dataset"], "all_instruments.pkl")
+    del params["data"]["dataset"]
+    del params["data"]["data_folder"]
+    del params["data"]["splits_folder"]
+
+    # Set some params 
+    feats_params = params["model"]["feats_params"]
+    include_adduct, include_CE, include_instrument = feats_params["include_adduct"], feats_params["include_CE"], feats_params["include_instrument"]
+
     # Get the model 
-    model, task, train_data, test_data, train_ids, test_ids = get_modules(folder, params, top_k)
+    model, task, train_data, test_data, train_ids, test_ids = get_modules(folder, params, top_k, 
+                                                                          include_adduct, include_CE, include_instrument)
 
     # Get the modules to get the influence scores 
     model = prepare_model(model = model, task = task)
@@ -272,7 +332,8 @@ def get_influence_scores(folder, output_path, top_k):
         factors_name="EKFAC",
         query_dataset=test_data,
         train_dataset=train_data,
-        per_device_query_batch_size=4,
+        per_device_query_batch_size=16,
+        per_device_train_batch_size=128,
     )
 
     # Load the scores 
@@ -305,7 +366,9 @@ if __name__ == "__main__":
 
         f = Path(f)
         output_path = f / "EK-FAC_scores.pkl"
-        if os.path.exists(output_path): print(f"{output_path} already exists. Continue.")
+        if os.path.exists(output_path): 
+            print(f"{output_path} already exists. Continue.")
+            continue
 
         print(f"Getting the influence scores for: {f}")
         get_influence_scores(f, output_path, top_k)

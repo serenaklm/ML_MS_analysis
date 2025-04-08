@@ -1,8 +1,6 @@
-import os 
-import copy
-import numpy as np
+import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Callable
+from typing import Any, Dict, List, Optional, Union
 
 import torch 
 import torch.nn as nn 
@@ -17,52 +15,6 @@ from utils import read_config, load_pickle, pickle_data
 
 from model.mist_model import MistNet
 
-class Data(object):
-
-    def __init__(self, data: Any, train_mode: bool, featurizer: Callable):
-
-        self.data = data
-        self.featurizer = featurizer
-        self.train_mode = train_mode
-
-    def __getitem__(self, index: int) -> Any:
-        spec, mol = self.data[index]
-
-        mol_features = self.featurizer.featurize_mol(mol, train_mode=self.train_mode)
-        spec_features = self.featurizer.featurize_spec(spec, train_mode=self.train_mode)
-
-        # Get padded version of this 
-        mol_features = self.featurizer.get_mol_collate()([mol_features])
-        spec_features = self.featurizer.get_spec_collate()([spec_features], max_len = 100)
-
-        # Get a dictionary of merged
-        merged = {} 
-        merged["spec_indices"] = torch.from_numpy(np.array([0]))
-        merged["mol_indices"] = torch.from_numpy(np.array([0]))
-        merged["matched"] = torch.from_numpy(np.array([True]))
-
-        # Add in the mol features
-        merged["mols"] = mol_features["mols"][0]
-
-        # ['types', 'form_vec', 'ion_vec', 'intens', 'names', 'num_peaks', 'instruments', 'fingerprints', 'fingerprint_mask'])
-        # Add in the spec features
-        merged["types"] = spec_features["types"][0]
-        merged["form_vec"] = spec_features["form_vec"][0]
-        merged["ion_vec"] = spec_features["ion_vec"][0]
-        merged["intens"] = spec_features["intens"][0]
-        merged["names"] = spec_features["names"][0]
-        merged["num_peaks"] = spec_features["num_peaks"][0]
-        merged["instruments"] = spec_features["instruments"][0]
-
-        if self.train_mode:
-            merged["fingerprints"] = spec_features["fingerprints"][0]
-            merged["fingerprint_mask"] = spec_features["fingerprint_mask"][0]
-
-        return merged
-
-    def __len__(self) -> int:
-        return len(self.data)
-    
 class TaskMIST(Task):
 
     def compute_train_loss(self,
@@ -83,15 +35,18 @@ class TaskMIST(Task):
         target_fp = target_fp_all[norm_inds]
 
         # Compute loss and return loss
+        fingerprints = batch.get("fingerprints")
+        fingerprints[fingerprints == -1] = 0
+        
         ret_dict = model.compute_loss(
             pred_fp,
             target_fp,
             aux_outputs_mol=aux_outputs_mol,
             aux_outputs_spec=aux_outputs_spec,
-            fingerprints=batch.get("fingerprints"),
+            fingerprints=fingerprints,
             fingerprint_mask=batch.get("fingerprint_mask"),
             train_step=True)
-        
+
         return ret_dict["loss"]
 
     def compute_measurement(
@@ -99,7 +54,7 @@ class TaskMIST(Task):
         batch: Any,
         model: nn.Module) -> torch.Tensor:
 
-        """Validation step"""
+        # Sum pool over channels for simplicity
         pred_fp, aux_outputs_spec = model.encode_spectra(batch)
 
         # Mol fp's
@@ -111,8 +66,20 @@ class TaskMIST(Task):
         norm_inds = mol_inds[batch["matched"]]
         target_fp = target_fp_all[norm_inds]
 
-        # Compute loss and return 
-        return F.binary_cross_entropy(pred_fp, target_f)
+        # Compute loss and return loss
+        fingerprints = batch.get("fingerprints")
+        fingerprints[fingerprints == -1] = 0
+
+        ret_dict = model.compute_loss(
+            pred_fp,
+            target_fp,
+            aux_outputs_mol=aux_outputs_mol,
+            aux_outputs_spec=aux_outputs_spec,
+            fingerprints=fingerprints,
+            fingerprint_mask=batch.get("fingerprint_mask"),
+            train_step=True)
+
+        return ret_dict["loss"]
 
     def get_influence_tracked_modules(self) -> Optional[List[str]]:
 
@@ -126,11 +93,7 @@ class TaskMIST(Task):
         total_modules.append(f"spectra_encoder.0.pairwise_featurizer.input_layer")
         total_modules.append(f"spectra_encoder.0.pairwise_featurizer.layers.0")
 
-        # Peak attn layer
-        for i in range(2):
-            total_modules.append(f"spectra_encoder.0.peak_attn_layers.{i}.linear1")
-            total_modules.append(f"spectra_encoder.0.peak_attn_layers.{i}.linear2")
-
+        # The predictors 
         total_modules.append(f"spectra_encoder.1.0")
         total_modules.append(f"spectra_encoder.2.initial_predict.0")
 
@@ -142,10 +105,7 @@ class TaskMIST(Task):
 
     def get_attention_mask(self, batch: Any) -> Optional[Union[Dict[str, torch.Tensor], torch.Tensor]]:
 
-        if "fingerprint_mask" in batch:
-            return batch["fingerprint_mask"]
-        
-        return None
+        return batch["fingerprint_mask"]
 
 def update_params(params):
 
@@ -189,7 +149,7 @@ def get_datasets(folder, params, top_k):
     my_splitter = splitter.get_splitter(**params["dataset"])
 
     # Get featurizers
-    paired_featurizer_train = featurizers.get_paired_featurizer(**params["dataset"])
+    paired_featurizer = featurizers.get_paired_featurizer(**params["dataset"])
 
     # Build dataset
     spectra_mol_pairs = datasets.get_paired_spectra(**params["dataset"])
@@ -210,20 +170,14 @@ def get_datasets(folder, params, top_k):
     train_files = [r[0].spectra_file for r in train]
     test_files = [r[0].spectra_file for r in test]
 
-    # Update the config now for test 
-    params_test = copy.deepcopy(params)
-    params_test["dataset"]["spec_features"] = "peakformula_test"
-    params_test["dataset"]["allow_none_smiles"] = False
-    paired_featurizer_test = featurizers.get_paired_featurizer(**params_test["dataset"])
-
     # Build dataset
     train_dataset = Data(data = train, 
                         train_mode = True,
-                        featurizer = paired_featurizer_train)
+                        featurizer = paired_featurizer)
     
     test_dataset = Data(data = test, 
-                        train_mode = False,
-                        featurizer = paired_featurizer_test)
+                        train_mode = True,
+                        featurizer = paired_featurizer)
 
     print(f"Analyzing : {len(test)} test samples")
 
@@ -256,7 +210,7 @@ def get_influence_scores(folder, output_path, top_k):
     analyzer = Analyzer(analysis_name = f"{folder.stem}", model = model, task = task)
 
     # [Optional] Set up the parameters for the DataLoader.
-    dataloader_kwargs = DataLoaderKwargs(num_workers=1, pin_memory=True)
+    dataloader_kwargs = DataLoaderKwargs(num_workers=4, pin_memory=True)
     analyzer.set_dataloader_kwargs(dataloader_kwargs)
 
     # Compute all factors
@@ -269,6 +223,7 @@ def get_influence_scores(folder, output_path, top_k):
         query_dataset=test_data,
         train_dataset=train_data,
         per_device_query_batch_size=16,
+        per_device_train_batch_size=128,
     )
 
     # Load the scores 
@@ -291,10 +246,10 @@ if __name__ == "__main__":
     
     for FP in os.listdir(folder):
         FP_folder = os.path.join(folder, FP)
-        for model in os.listdir(FP_folder):
-            model_folder = os.path.join(FP_folder, model)
-            for checkpoint in os.listdir(model_folder):
-                all_folders.append(os.path.join(model_folder, checkpoint))
+        for dataset in os.listdir(FP_folder):
+            dataset_folder = os.path.join(FP_folder, dataset)
+            for checkpoint in os.listdir(dataset_folder):
+                all_folders.append(os.path.join(dataset_folder, checkpoint))
 
     # Iterate through all folders to get influence scores for the models
     for f in all_folders:
