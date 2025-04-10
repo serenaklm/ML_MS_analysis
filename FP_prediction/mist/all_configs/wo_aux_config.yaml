@@ -11,7 +11,7 @@ dataset:
   mol_features: "fingerprint"
   dataset_type: "default"
   cls_type: "ms1"
-  magma_aux_loss: True
+  magma_aux_loss: False
   magma_modulo: 512
 
 model:

@@ -6,18 +6,16 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torch.distributions.categorical import Categorical
 
-
 @torch.no_grad()
 def split_data(data: Dataset = None,
                splitter: torch.nn.Module = None,
                train_ratio: float = 0.0, 
                batch_size: int = 0, 
                num_workers: int = 0, 
-               config: dict = None,
                random_split = False):
     
     splitter.eval()
-
+    print("random split is:", random_split)
     dataloader = DataLoader(data, shuffle = False,
                              batch_size = batch_size,
                              num_workers = num_workers)

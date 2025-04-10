@@ -1,8 +1,8 @@
-**/nist2020/*
-**/influence_results/*
 **/models_cached/*
-**/results/*
-**/DreaMS/*
-**/wandb/*
-**/pretrained_models/*
 **/cached_results/*
+**/results/*
+**/ls_results/*
+**/influence_results/*
+**/wandb/*
+**/DreaMS/*
+**/pretrained_models/*

@@ -52,7 +52,7 @@ def update_config(args, config):
     config["trainer"]["val_check_interval"] = config["trainer"]["log_every_n_steps"] - 1
 
     if devices > 1:
-        config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
+        config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=False))
 
     if args.disable_checkpoint:
         config["trainer"]["enable_checkpointing"] = False
@@ -167,12 +167,12 @@ def train(config):
                                    entity = config["args"]["user"],
                                    name = expt_name,
                                    log_model = False)
-        
+
         # Dump config
         raw_config = copy.deepcopy(config)
         del raw_config["args"]
         write_config(wandb_logger, raw_config)
-
+        
     # Write the config here
     config_o = read_config(os.path.join(config["args"]["config_dir"], config["args"]["config_file"]))
     config_o["exp_name"] = expt_name
@@ -190,7 +190,7 @@ def train(config):
     monitor = config["callbacks"]["monitor"]
     checkpoint_callback = ModelCheckpoint(monitor=monitor,
                                           dirpath = results_dir,
-                                          filename = '{epoch:03d}-{val_average_loss:.5f}', # Hack
+                                          filename = '{epoch:03d}-{val_FP_loss:.5f}', # Hack
                                           every_n_train_steps = config["trainer"]["log_every_n_steps"], 
                                           save_top_k = 2, mode = "min")
     earlystop_callback = EarlyStopping(monitor=monitor, patience=config["callbacks"]["patience"])
@@ -211,6 +211,7 @@ def train(config):
         raise Exception(f"{model_name} not supported.")
     
     # Train     
+    wandb_logger.watch(model)
     trainer.fit(model, datamodule = dataset)
 
 if __name__ == "__main__":

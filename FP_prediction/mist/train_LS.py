@@ -1,6 +1,7 @@
 import os
 import yaml
 import copy
+import wandb
 import random
 import argparse
 from typing import List
@@ -8,12 +9,12 @@ from datetime import datetime
 
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import EarlyStopping
+from lightning.pytorch.loggers import WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 from modules import Data
-from utils import read_config
+from utils import read_config, pickle_data, write_json
 
 from model import mist_model
 from mist.data import datasets, featurizers
@@ -87,19 +88,9 @@ def learning_to_split(config: dict,
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"], "mist")
     expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    expt_name = f"mist_{expt_name}"
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
-
-    # Initialize the logger
-    wandb_logger = None
-    if not config["args"]["debug"] and config["args"]["wandb"]:
-        wandb_logger = WandbLogger(project = config["project"],
-                                    config = config,
-                                    group = config["args"]["config_file"].replace(".yaml", ""),
-                                    entity = config["args"]["user"],
-                                    name = expt_name,
-                                    log_model = False)
-    config["run"] = wandb_logger 
     
     # Write the config here
     config_o = read_config(os.path.join(config["args"]["config_dir"], config["args"]["config_file"]))
@@ -115,11 +106,18 @@ def learning_to_split(config: dict,
 
     # Get the splitter
     config_splitter = copy.deepcopy(config)
-    config_splitter["run"] = wandb_logger
     config_splitter["dataset"]["fp_names"] = ["splitter"]
     config_splitter["model"]["params"]["fp_names"] = config_splitter["dataset"]["fp_names"]
     splitter = mist_model.MistNet(**config_splitter["model"]["params"])
     opt = get_optim(splitter, config)
+
+    # Get the wandb logger 
+    wandb_logger = WandbLogger(project = config["project"],
+                        config = config,
+                        group = config["args"]["config_file"].replace(".yaml", ""),
+                        entity = config["args"]["user"],
+                        name = expt_name,
+                        log_model = False)
 
     # Start training here
     for outer_loop in range(config["train_params"]["n_outer_loops"]):
@@ -129,56 +127,66 @@ def learning_to_split(config: dict,
         # Split the data 
         random_split = True if outer_loop == 0 else False
         split_stats, train_indices, test_indices = split_data(dataset, splitter, 
-                                                              config["splitter"]["train_ratio"], 
-                                                              config["train_settings"]["batch_size"], 
-                                                              config["train_settings"]["num_workers"], 
-                                                              random_split) 
+                                                            config["splitter"]["train_ratio"], 
+                                                            config["train_settings"]["batch_size"], 
+                                                            config["train_settings"]["num_workers"], 
+                                                            random_split) 
 
         # Get the data modules now 
-        datamodule, (val_dataset, test_dataset) = get_data_modules(spectra_mol_pairs, train_indices, test_indices, paired_featurizer)
+        datamodule, _ = get_data_modules(spectra_mol_pairs, train_indices, test_indices, paired_featurizer)
 
         # Get trainer and logger
         monitor = config["callbacks"]["val_monitor"]
-        earlystop_callback = EarlyStopping(monitor=monitor, patience=config["callbacks"]["patience"])
-        trainer = pl.Trainer(**config["trainer"], logger = None, callbacks=[earlystop_callback])
+        checkpoint_callback = ModelCheckpoint(monitor=monitor,
+                                            dirpath = results_dir,
+                                            filename = '{epoch:03d}-{val_bce_loss:.5f}', # Hack 
+                                            save_top_k = 2, mode = "min")
+
+        trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback])
 
         # Start the training now
-        # trainer.fit(predictor, datamodule = datamodule)
+        trainer.fit(predictor, datamodule = datamodule)
 
         # # Get the gap 
-        # val_loss = trainer.validate(model = predictor, dataloaders = datamodule)[0]["val_loss"]
-        # test_loss = trainer.test(model = predictor, dataloaders = datamodule)[0]["test_loss"]
-        # gap = test_loss - val_loss
+        val_loss = trainer.validate(model = predictor, dataloaders = datamodule)[0]["val_loss"]
+        test_loss = trainer.test(model = predictor, dataloaders = datamodule)[0]["test_loss"]
+        gap = test_loss - val_loss
 
-        # if gap > best_gap:
+        # Add to wandb 
+        wandb_logger.log_metrics({"predictor/val_loss_epoch": val_loss})
+        wandb_logger.log_metrics({"predictor/test_loss_epoch": test_loss})
+
+        if gap > best_gap:
             
-        #     best_gap, num_no_improvements = gap, 0
+            best_gap, num_no_improvements = gap, 0
 
-            # best_split = {"train_indices":  train_indices,
-            #               "test_indices":   test_indices,
-            #               "val_loss":      val_loss,
-            #               "test_loss":     test_loss,
-            #               "split_stats":    split_stats,
-            #               "outer_loop":     outer_loop,
-            #               "best_gap":       best_gap}
-            
-            # save(splitter, predictor, best_split, config["output_dir"])
+            best_split = {"train_indices":  train_indices,
+                            "test_indices":    test_indices,
+                            "val_loss":        val_loss,
+                            "test_loss":       test_loss,
+                            "split_stats":     split_stats,
+                            "outer_loop":      outer_loop,
+                            "best_gap":        best_gap}
+                
+            pickle_data(best_split, os.path.join(results_dir, "best_split.pkl"))
 
-        # else: num_no_improvements += 1
-        # if num_no_improvements == config["splitter"]["patience"]: break
+            # Write down some stats of the current split too 
+            split_stats["best_gap"] = best_gap
+            write_json(split_stats, os.path.join(results_dir, "splits_stats.json"))
+
+        else: num_no_improvements += 1
+        if num_no_improvements == config["splitter"]["patience"]: break
 
         # Train the splitter
-        train_splitter(splitter, predictor, dataset, test_indices, opt,
-                       config["train_settings"]["batch_size"], config["splitter"]["num_batches"], config["train_settings"]["num_workers"],
-                       config, verbose = verbose)
-        
+        train_splitter(splitter, predictor, dataset, test_indices, opt, wandb_logger,
+                        config["splitter"]["batch_size"], config["splitter"]["num_batches"], config["train_settings"]["num_workers"],
+                        config, verbose = verbose)
+    
     # Done! Print the best split.
     if verbose:
         print("Finished!\nBest split:")
-        print_split_status(best_split["outer_loop"], best_split["split_stats"],
-                           best_split["val_score"], best_split["test_score"])
-
-    a = z 
+        print(best_split["outer_loop"], best_split["split_stats"],
+                        best_split["val_score"], best_split["test_score"])
 
 if __name__ == "__main__":
 

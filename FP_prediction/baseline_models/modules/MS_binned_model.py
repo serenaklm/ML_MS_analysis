@@ -105,20 +105,26 @@ class MSBinnedModel(pl.LightningModule):
 
         return loss
     
-    def get_output(self, batch):
+    def get_output(self, batch, device):
 
         # Unpack the batch 
-        binned_ms = batch["binned_MS"]
+        binned_ms = batch["binned_MS"].to(device)
 
         adduct, CE, instrument = None, None, None
-        if self.include_adduct: adduct = batch["adduct"]
-        if self.include_CE: CE = batch["CE"]
-        if self.include_instrument: instrument = batch["instrument"]
+        if self.include_adduct: adduct = batch["adduct"].to(device)
+        if self.include_CE: CE = batch["CE"].to(device)
+        if self.include_instrument: instrument = batch["instrument"].to(device)
 
         # Forward pass
-        FP_pred, _ = self(binned_ms, adduct, CE, instrument)
+        pred, _ = self(binned_ms, adduct, CE, instrument)
 
-        return FP_pred
+        # Hack for splitter 
+        if pred.shape[-1] == 2: 
+            pred = F.softmax(pred, dim = -1)
+        else: 
+            pred = F.sigmoid(pred, dim = -1)
+            
+        return pred
     
     def training_step(self, batch, batch_idx):
 
@@ -147,8 +153,8 @@ class MSBinnedModel(pl.LightningModule):
         loss = FP_loss + self.reconstruction_weight * reconstruction_loss
 
         # Log the training loss
-        self.log("train_FP_loss", FP_loss, prog_bar = True, sync_dist = True)
-        self.log("train_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True)
+        self.log("train_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        self.log("train_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
         # Add to the tracker 
         self.avg_loss_train.append(FP_loss.item())
@@ -179,22 +185,19 @@ class MSBinnedModel(pl.LightningModule):
         reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
 
         # Log the validation loss
-        self.log("val_FP_loss", FP_loss, prog_bar = True, sync_dist = True)
-        self.log("val_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True)
+        self.log("val_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        self.log("val_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
-        # Add to the tracker 
-        self.avg_loss_val.append(FP_loss.item())
+    # def on_validation_epoch_end(self):
 
-    def on_validation_epoch_end(self):
+    #     train_avg = np.mean(self.avg_loss_train)
+    #     val_avg = np.mean(self.avg_loss_val)
 
-        train_avg = np.mean(self.avg_loss_train)
-        val_avg = np.mean(self.avg_loss_val)
+    #     self.log("train_average_loss", train_avg, prog_bar = True, sync_dist = True)
+    #     self.log("val_average_loss", val_avg, prog_bar = True, sync_dist = True)
 
-        self.log("train_average_loss", train_avg, prog_bar = True, sync_dist = True)
-        self.log("val_average_loss", val_avg, prog_bar = True, sync_dist = True)
-
-        # Reset the tracker 
-        self.avg_loss_train, self.avg_loss_val = [], [] 
+    #     # Reset the tracker 
+    #     self.avg_loss_train, self.avg_loss_val = [], [] 
 
     def configure_optimizers(self):
        

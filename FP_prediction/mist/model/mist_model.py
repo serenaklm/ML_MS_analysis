@@ -392,11 +392,22 @@ class MistNet(pl.LightningModule):
 
         return ret_dict
 
-    def get_output(self, batch):
+    def get_output(self, batch, device):
+        
+        # Move some things to GPU 
+        keys = ["mols", "form_vec", "intens", "num_peaks", "ion_vec",  "types", "instruments", "fingerprints", "fingerprint_mask"] 
+        
+        batch_moved = {} 
+        for k, v in batch.items():
+            if k in keys: v = v.to(device)
+            batch_moved[k] = v 
 
-        pred_fp, _ = self.encode_spectra(batch)
+        pred, _ = self.encode_spectra(batch_moved)
 
-        return pred_fp
+        # Hack for splitter 
+        if pred.shape[-1] == 2: pred = F.softmax(pred, dim = -1)
+
+        return pred
 
     def training_step(self, batch, batch_idx):
         """training_step.
@@ -420,7 +431,8 @@ class MistNet(pl.LightningModule):
 
         # Get the magma fingerprints 
         magma_fingerprints = batch.get("fingerprints")
-        magma_fingerprints[magma_fingerprints == -1] = 0
+        if magma_fingerprints is not None:
+            magma_fingerprints[magma_fingerprints == -1] = 0
         
         # Compute loss and log
         ret_dict = self.compute_loss(
@@ -457,7 +469,8 @@ class MistNet(pl.LightningModule):
 
         # Get the magma fingerprints 
         magma_fingerprints = batch.get("fingerprints")
-        magma_fingerprints[magma_fingerprints == -1] = 0
+        if magma_fingerprints is not None:
+            magma_fingerprints[magma_fingerprints == -1] = 0
 
         # Compute loss and log
         ret_dict = self.compute_loss(

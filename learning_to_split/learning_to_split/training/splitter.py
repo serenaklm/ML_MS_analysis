@@ -7,14 +7,6 @@ from torch.utils.data import Dataset, DataLoader, RandomSampler, Subset
 
 from learning_to_split.utils import optim_step
 
-def to_device(batch, device):
-
-    batch_moved = {} 
-    for k, v in batch.items():
-        if type(v) == list: batch_moved[k] = v 
-        else: batch_moved[k] = v.to(device)
-    return batch_moved
-
 def compute_marginal_z_loss(mask, tar_ratio, no_grad = False):
 
     '''
@@ -23,10 +15,10 @@ def compute_marginal_z_loss(mask, tar_ratio, no_grad = False):
     '''
 
     cur_ratio = torch.mean(mask)
-    cur_z = torch.stack([cur_ratio, 1 - cur_ratio])  # train split, test_split
+    cur_z = torch.stack([1.0 - cur_ratio, cur_ratio])  # test_split, train_split
 
     tar_ratio = torch.ones_like(cur_ratio) * tar_ratio
-    tar_z = torch.stack([tar_ratio, 1 - tar_ratio])
+    tar_z = torch.stack([1.0 - tar_ratio, tar_ratio])
 
     loss_ratio = F.kl_div(torch.log(cur_z), tar_z, reduction='batchmean')
 
@@ -38,7 +30,7 @@ def compute_marginal_z_loss(mask, tar_ratio, no_grad = False):
 
     return loss_ratio, cur_ratio.item()
 
-def compute_y_given_z_loss(mask, FP, no_grad = False):
+def compute_y_given_z_loss(mask, FP, no_grad = False, eps = 1e-6):
     
     '''
       conditional marginal p(y | z = 1) need to match p(y | z = 0)
@@ -51,7 +43,7 @@ def compute_y_given_z_loss(mask, FP, no_grad = False):
         y = FP[:, p]
         y_given_train, y_given_test, y_original = [], [], []
 
-        y_i = (y == 0).float()
+        y_i = (y == 1).float()
 
         y_given_train.append(torch.sum(y_i * mask) / torch.sum(mask))
         y_given_test.append(torch.sum(y_i * (1 - mask)) / torch.sum(1 - mask))
@@ -66,9 +58,14 @@ def compute_y_given_z_loss(mask, FP, no_grad = False):
         p_original.append(y_original)
     
     # Get the loss now 
-    p_given_train = torch.stack(p_given_train)
-    p_given_test = torch.stack(p_given_test)
-    p_original = torch.stack(p_original)
+    p_given_train = torch.stack(p_given_train).squeeze(-1)
+    p_given_test = torch.stack(p_given_test).squeeze(-1)
+    p_original = torch.stack(p_original).squeeze(-1) 
+
+    # Compute the loss only for indices that are more than 0.0 
+    p_given_train = p_given_train[p_original > 0]
+    p_given_test = p_given_test[p_original > 0]
+    p_original = p_original[p_original > 0]
 
     loss_p_train_marginal = F.kl_div(torch.log(p_given_train), p_original, reduction = 'batchmean')
     loss_p_test_marginal = F.kl_div(torch.log(p_given_test), p_original, reduction = 'batchmean')
@@ -82,11 +79,9 @@ def compute_y_given_z_loss(mask, FP, no_grad = False):
 
     return loss_p_marginal
 
-def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, config):
+def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, wandb_logger, config):
 
-    run = config["run"]
-    stats = {}
-    for k in ["loss_ratio", "loss_balance", "loss_gap", "loss"]: stats[k] = []
+    stats = {k : [] for k in ["loss_ratio", "loss_balance", "loss_gap", "loss"]}
     
     FP_key = config["dataset"]["FP_key"]
     splitter = splitter.to(config["device"])
@@ -94,31 +89,33 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
 
     for batch, batch_test in zip(loader, test_loader):
         
-        logit = splitter.get_output(to_device(batch, config["device"]))
-
+        logit = splitter.get_output(batch, config["device"])
         FP = batch[FP_key].to(config["device"])
-        prob = F.softmax(logit, dim = -1)[:, 1]
+        prob = F.softmax(logit, dim = -1)[:, 1] # train is position 1
 
         # Ensures that the ratio are compatible
-        loss_ratio, _ = compute_marginal_z_loss(prob, config["train_params"]["train_ratio"])
+        loss_ratio, _ = compute_marginal_z_loss(prob, config["splitter"]["train_ratio"])
 
         # Ensures p(y | z = 1) need to match p(y | z = 0)
         loss_balance = compute_y_given_z_loss(prob, FP)
 
         # predictor's correctness as a loss 
-        logit_test = splitter.get_output(to_device(batch_test, config["device"]))
+        logit_test = splitter.get_output(batch_test, config["device"])
 
         with torch.no_grad():
 
             FP_test = batch_test[FP_key].float().to(config["device"])
 
-            FP_pred_test = predictor.get_output(to_device(batch_test, config["device"]))
+            FP_pred_test = predictor.get_output(batch_test, config["device"])
             score = F.binary_cross_entropy(FP_pred_test, FP_test, reduction = "none").mean(-1)
-            
+            score = F.sigmoid(score)
+
             # 0: test split, 1: train split
             # If we move the mistake to the test, the higher the loss, the higher pos 0 is 
             score_test = torch.concat([score[:, None], (1.0 - score)[:, None]], dim = -1)
 
+        print("logit_test:", logit_test)
+        print("score_test", score_test)
         loss_gap = F.cross_entropy(logit_test, score_test) # Move the mistake to the test 
 
         # Get the combined loss 
@@ -132,6 +129,12 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
         # Optimize
         optim_step(splitter, opt, loss, config)
 
+        # Add to wandb 
+        wandb_logger.log_metrics({"splitter/loss_ratio_step": loss_ratio.item()})
+        wandb_logger.log_metrics({"splitter/loss_balance_step": loss_balance.item()})
+        wandb_logger.log_metrics({"splitter/loss_gap_step": loss_gap.item()})
+        wandb_logger.log_metrics({"splitter/loss_step": loss.item()})
+
         # Update the stats
         stats["loss_ratio"].append(loss_ratio.item())
         stats["loss_balance"].append(loss_balance.item())
@@ -142,13 +145,13 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
         print(loss_ratio.item(), loss_balance.item(), loss_gap.item())
 
     for k, v in stats.items():
-        stats[k] = torch.mean(torch.tensor(v)).item()
+        stats[k] = sum(v) / len(v)
 
     # Add to wandb 
-    run.log({"splitter/loss_ratio": stats["loss_ratio"].item()})
-    run.log({"splitter/loss_balance": stats["loss_balance"].item()})
-    run.log({"splitter/loss_gap": stats["loss_gap"].item()})
-    run.log({"splitter/loss": stats["loss"].item()})
+    wandb_logger.log_metrics({"splitter/loss_ratio_epoch": stats["loss_ratio"]})
+    wandb_logger.log_metrics({"splitter/loss_balance_epoch": stats["loss_balance"]})
+    wandb_logger.log_metrics({"splitter/loss_gap_epoch": stats["loss_gap"]})
+    wandb_logger.log_metrics({"splitter/loss_epoch": stats["loss"]})
 
     return stats
 
@@ -157,6 +160,7 @@ def train_splitter(splitter: nn.Module,
                    data: Dataset,
                    test_indices: list[int],
                    opt: dict,
+                   wandb_logger: any, 
                    batch_size: int, 
                    num_batches: int, 
                    num_workers: int, 
@@ -182,7 +186,7 @@ def train_splitter(splitter: nn.Module,
 
     while True:
 
-        train_stats = _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, config)
+        train_stats = _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, wandb_logger, config)
         cur_loss = train_stats["loss"]
 
         patience = config["splitter"]["patience"]

@@ -7,7 +7,7 @@ data:
   data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data/"
   splits_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_splits/"
   split_file: "inchikey_vanilla.json" # Could just use any placeholder
-  batch_size: 512
+  batch_size: 1024
   num_workers: 4
   bin_resolution: 0.25
   max_da: 2000
@@ -20,17 +20,18 @@ data:
   chemberta_model: "/data/rbg/users/klingmin/projects/ML_MS_analysis/pretrained_models/ChemBERTa-zinc-base-v1"
 
 train_params:
-  learning_rate: 0.0005
+  learning_rate: 0.00075
   weight_decay: 0.00005
-  pos_weight: 10.0
-  reconstruction_weight: 1.0
+  pos_weight: 5.0
+  reconstruction_weight: 0
   n_outer_loops: 500
   name: "Adam"
 
 splitter:
-  patience: 5
+  patience: 20
   convergence_threshold: 0.003
-  num_batches: 100
+  num_batches: 500
+  batch_size: 32
   w_gap: 1.0
   w_ratio: 1.0
   w_balance: 1.0
@@ -46,25 +47,25 @@ model:
     include_instrument: True 
 
   binned_MS_encoder:
-    model_dim: 256
-    hidden_dim: 1024
-    dropout_rate: 0.20
+    model_dim: 512
+    hidden_dim: 2048
+    dropout_rate: 0.30
 
   MS_encoder:
     n_heads: 8
     n_layers: 8
-    model_dim: 256
-    hidden_dim: 1024
-    dropout_rate: 0.20
+    model_dim: 512
+    hidden_dim: 2048
+    dropout_rate: 0.30
 
 trainer:
-  max_epochs: 500
+  max_epochs: 5 # So that we can still make some mistakes in the test?
   devices: 4
   accelerator: "gpu"
   log_every_n_steps: 5
 
 callbacks:
-  patience: 20 
-  monitor: "val_average_loss"
+  patience: 20
+  monitor: "val_FP_loss"
 
 

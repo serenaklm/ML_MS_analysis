@@ -1,6 +1,6 @@
 project: LS
 seed: 17
-device: 6
+device: 0
 
 dataset:
   fp_names: ["morgan4096"]
@@ -48,14 +48,15 @@ train_params:
   n_outer_loops: 500 
   
 train_settings: 
-  batch_size: 128
+  batch_size: 512
   num_workers: 4
   augment_data: False  
 
 splitter:
-  patience: 5
+  patience: 20 # in case it is hard to train
   convergence_threshold: 0.003
-  num_batches: 100
+  num_batches: 500
+  batch_size: 32
   w_gap: 1.0
   w_ratio: 1.0
   w_balance: 1.0
@@ -63,7 +64,7 @@ splitter:
   clip_grad_norm: 0
 
 trainer:
-  max_epochs: 200
+  max_epochs: 10 # So that we know what to shift to the test set
   devices: 4
   log_every_n_steps: 5
   accelerator: "gpu"

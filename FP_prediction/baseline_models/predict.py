@@ -224,26 +224,26 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type = str, help = "Path to a model checkpoint")
     args = parser.parse_args()
 
-    # # Manually add in (hack)
-    # folder = "./models_cached/"
-    # all_folders = []
-    
-    # for FP in os.listdir(folder):
-    #     FP_folder = os.path.join(folder, FP)
-    #     for model in os.listdir(FP_folder):
-    #         model_folder = os.path.join(FP_folder, model)
-    #         for checkpoint in os.listdir(model_folder):
-                
-    #             all_folders.append(os.path.join(model_folder, checkpoint))
-
-    # # Manually add in (hack)
-    folder = "./ressults/"
+    # Manually add in (hack)
+    folder = "./models_cached/"
     all_folders = []
     
-    for model in os.listdir(folder):
-        model_folder = os.path.join(folder, model)
-        for checkpoint in os.listdir(model_folder):
-            all_folders.append(os.path.join(model_folder, checkpoint))
+    for FP in os.listdir(folder):
+        FP_folder = os.path.join(folder, FP)
+        for model in os.listdir(FP_folder):
+            model_folder = os.path.join(FP_folder, model)
+            for checkpoint in os.listdir(model_folder):
+                
+                all_folders.append(os.path.join(model_folder, checkpoint))
+
+    # # # Manually add in (hack)
+    # folder = "./results/"
+    # all_folders = []
+    
+    # for model in os.listdir(folder):
+    #     model_folder = os.path.join(folder, model)
+    #     for checkpoint in os.listdir(model_folder):
+    #         all_folders.append(os.path.join(model_folder, checkpoint))
 
     for f in all_folders:
 
