@@ -1,6 +1,6 @@
 project: LS
 seed: 17
-device: 6
+device: 1
 
 data:
   dataset: "canopus"
@@ -27,17 +27,6 @@ train_params:
   n_outer_loops: 500
   name: "Adam"
 
-splitter:
-  patience: 20
-  convergence_threshold: 0.003
-  num_batches: 500
-  batch_size: 32
-  w_gap: 1.0
-  w_ratio: 1.0
-  w_balance: 1.0
-  train_ratio: 0.8
-  clip_grad_norm: 0
-
 model:
   name: "formula_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
 
@@ -58,14 +47,25 @@ model:
     hidden_dim: 2048
     dropout_rate: 0.30
 
+splitter:
+  patience: 20
+  convergence_threshold: 0.003
+  num_batches: 500
+  batch_size: 64
+  w_gap: 1.0
+  w_ratio: 1.0
+  w_balance: 1.0
+  train_ratio: 0.8
+  clip_grad_norm: 0
+
 trainer:
-  max_epochs: 5 # So that we can still make some mistakes in the test?
+  max_epochs: 15 # So that we can still make some mistakes in the test?
   devices: 4
   accelerator: "gpu"
   log_every_n_steps: 5
 
 callbacks:
-  patience: 20
+  patience: 2
   monitor: "val_FP_loss"
 
 

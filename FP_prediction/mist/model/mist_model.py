@@ -3,6 +3,7 @@
 import math 
 from functools import partial
 from typing import Optional, List, Tuple
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -512,6 +513,7 @@ class MistNet(pl.LightningModule):
         return {"loss": mol_bce_loss_mean}
 
     def encode_spectra(self, batch: dict) -> Tuple[torch.Tensor, dict]:
+        
         """encode_spectra."""
         if self.iterative_preds == "none":
             encoder_output, aux_out = self.spectra_encoder[0](batch, return_aux=True)
@@ -564,3 +566,31 @@ class MistNet(pl.LightningModule):
                 },
             }
             return ret
+
+class MistNetNN(nn.Module):
+
+    def __init__(self, model: MistNet):
+
+        super().__init__()
+
+        # Transfer weights or layers from the Lightning model
+        self.iterative_preds = model.iterative_preds
+        self.spectra_encoder = model.spectra_encoder
+        self.spectra_encoder[2] = nn.Sequential(*list(self.spectra_encoder[2].children())[:-1])
+
+    def forward(self, batch, device):
+
+        # Move some things to GPU 
+        keys = ["mols", "form_vec", "intens", "num_peaks", "ion_vec",  "types", "instruments", "fingerprints", "fingerprint_mask"] 
+        
+        batch_moved = {} 
+        for k, v in batch.items():
+            if k in keys: v = v.to(device)
+            batch_moved[k] = v 
+
+        encoder_output, _ = self.spectra_encoder[0](batch_moved, return_aux=True)
+        pred = self.spectra_encoder[2](encoder_output)
+        if self.iterative_preds == "growing":
+            pred = pred[-1]
+
+        return pred

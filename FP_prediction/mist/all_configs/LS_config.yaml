@@ -56,7 +56,7 @@ splitter:
   patience: 20 # in case it is hard to train
   convergence_threshold: 0.003
   num_batches: 500
-  batch_size: 32
+  batch_size: 128
   w_gap: 1.0
   w_ratio: 1.0
   w_balance: 1.0
@@ -64,12 +64,12 @@ splitter:
   clip_grad_norm: 0
 
 trainer:
-  max_epochs: 10 # So that we know what to shift to the test set
+  max_epochs: 15 # So that we know what to shift to the test set
   devices: 4
   log_every_n_steps: 5
   accelerator: "gpu"
   gradient_clip_val: 5 
 
 callbacks: 
-  patience: 20 
+  patience: 2
   val_monitor: "val_bce_loss"

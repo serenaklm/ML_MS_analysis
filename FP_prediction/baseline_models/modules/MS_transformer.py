@@ -67,9 +67,6 @@ class MSTransformerEncoder(pl.LightningModule):
         self.include_adduct = include_adduct
         self.include_CE = include_CE
         self.include_instrument = include_instrument
-        
-        # Get a mean logger 
-        self.avg_loss_train, self.avg_loss_val = [], []
 
         # Get all the encoders
         self.mz_encoder = LearnableFourierFeatures(1, model_dim, hidden_dim, model_dim)
@@ -174,12 +171,9 @@ class MSTransformerEncoder(pl.LightningModule):
         # Forward pass
         pred, _ = self(mz, intensities, mask, binned_ms, adduct, CE, instrument)
 
-        # Hack for splitter 
-        if pred.shape[-1] == 2: 
-            pred = F.softmax(pred, dim = -1)
-        else: 
-            pred = F.sigmoid(pred, dim = -1)
-            
+        # Make sure that each bit is between 0 and 1 
+        pred = F.sigmoid(pred)
+
         return pred
     
     def training_step(self, batch, batch_idx):
@@ -210,9 +204,6 @@ class MSTransformerEncoder(pl.LightningModule):
         self.log("train_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("train_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
-        # Add to the tracker 
-        self.avg_loss_train.append(FP_loss.item())
-
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -236,27 +227,104 @@ class MSTransformerEncoder(pl.LightningModule):
         # Compute the reconstruction loss
         reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
 
+        # Get the total loss
+        loss = FP_loss + self.reconstruction_weight * reconstruction_loss
+
         # Log the validation loss
         self.log("val_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("val_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
-        # Add to the tracker 
-        self.avg_loss_val.append(FP_loss.item())
+        return {"loss:" : loss, "FP_loss": FP_loss, "reconstruction_loss": reconstruction_loss}
 
-    # def on_validation_epoch_end(self):
+    def test_step(self, batch, batch_idx):
 
-    #     train_avg = np.mean(self.avg_loss_train)
-    #     val_avg = np.mean(self.avg_loss_val)
+        # Unpack the batch 
+        mz, intensities, mask = batch["mz"], batch["intensities"], batch["mask"]
+        binned_ms = batch["binned_MS"]
+        FP = batch["FP"]
 
-    #     self.log("train_average_loss", train_avg, prog_bar = True, sync_dist = True)
-    #     self.log("val_average_loss", val_avg, prog_bar = True, sync_dist = True)
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
 
-    #     # Reset the tracker 
-    #     self.avg_loss_train, self.avg_loss_val = [], [] 
+        # Forward pass
+        FP_pred, binned_ms_pred = self(mz, intensities, mask, binned_ms, adduct, CE, instrument)
+
+        # Compute the FP prediction loss 
+        FP_loss = self.compute_loss(FP_pred, FP)
+
+        # Compute the reconstruction loss
+        reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
+
+        # Get the total loss
+        loss = FP_loss + self.reconstruction_weight * reconstruction_loss
+
+        # Log the test loss
+        self.log("test_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        self.log("test_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+
+        return {"loss:" : loss, "FP_loss": FP_loss, "reconstruction_loss": reconstruction_loss}
 
     def configure_optimizers(self):
        
        optimizer = torch.optim.Adam(self.parameters(), lr = self.lr, weight_decay = self.weight_decay)
 
        return optimizer
-    
+
+class MSTransformerEncoderNN(nn.Module):
+
+    def __init__(self, model: MSTransformerEncoder):
+
+        super().__init__()
+
+        # Transfer weights or layers from the Lightning model
+        self.include_adduct = model.include_adduct 
+        self.include_CE = model.include_CE 
+        self.include_instrument = model.include_instrument 
+
+        self.adduct_embs = model.adduct_embs
+        self.CE_embs = model.CE_embs
+        self.instrument_embs = model.instrument_embs 
+
+        self.binned_ms_encoder = model.binned_ms_encoder
+        self.mz_encoder = model.mz_encoder
+        self.intensity_encoder = model.intensity_encoder
+        self.peaks_encoder = model.peaks_encoder
+        self.MS_encoder = model.MS_encoder
+        self.pred_layer = model.pred_layer
+
+    def forward(self, batch, device):
+
+        # Get the inputs and move to the device
+        mz, intensities, mask = batch["mz"].to(device), batch["intensities"].to(device), batch["mask"].to(device)
+        binned_ms = batch["binned_MS"].to(device)
+
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"].to(device)
+        if self.include_CE: CE = batch["CE"].to(device)
+        if self.include_instrument: instrument = batch["instrument"].to(device)
+
+        # Get the embeddings (MS_binned combined with emb for meta data)
+        if self.include_adduct: binned_ms = torch.concat([binned_ms, self.adduct_embs(adduct)], dim = -1)
+        if self.include_CE: binned_ms = torch.concat([binned_ms, self.CE_embs(CE)], dim = -1)
+        if self.include_instrument: binned_ms = torch.concat([binned_ms, self.instrument_embs(instrument)], dim = -1)
+        emb = self.binned_ms_encoder(binned_ms)
+
+        # Get fourier features for all peaks in the MS 
+        mz_emb = self.mz_encoder(mz[:, :, None])
+        intensities_emb = self.intensity_encoder(intensities[:, :, None])
+        peaks_emb = self.peaks_encoder(torch.concat([mz_emb, intensities_emb], dim = -1))
+
+        # Encode with transformer 
+        # True are not allowed to attend while False values will be unchanged.
+        MS_emb = self.MS_encoder(peaks_emb, src_key_padding_mask = mask)
+        MS_emb = MS_emb[:, 0, :]
+
+        # Merge the features together
+        feats = torch.concat([MS_emb, emb], dim = -1)
+
+        # Get the FP prediction 
+        FP_pred = self.pred_layer(feats)
+
+        return FP_pred

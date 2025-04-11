@@ -2,7 +2,7 @@ project: FP_baselines_w_meta
 seed: 17
 
 data:
-  dataset: "massspecgym"
+  dataset: "nist2023"
   data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data/"
   splits_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_splits/"
   split_file: "random.json"
@@ -45,7 +45,7 @@ model:
     dropout_rate: 0.30
 
 trainer:
-  max_epochs: 200
+  max_epochs: 250
   devices: 2
   accelerator: "gpu"
   log_every_n_steps: 5

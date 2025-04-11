@@ -10,8 +10,8 @@ from datetime import datetime
 import torch
 import pytorch_lightning as pl
 from lightning.pytorch.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 from modules import Data
 from utils import read_config, pickle_data, write_json
@@ -48,7 +48,7 @@ def update_config(args, config):
     config["device"] = torch.device(f"cuda:{device_id}")
 
     return config
-    
+
 @rank_zero_only
 def write_config_local(config, config_out_path):
     with open(config_out_path, "w") as f:
@@ -86,9 +86,10 @@ def learning_to_split(config: dict,
     dataset = Data(data = spectra_mol_pairs, train_mode = True, featurizer = paired_featurizer)
 
     # Update the results directory 
-    results_dir = os.path.join(config["args"]["results_dir"], "mist")
+    results_dir = os.path.join(config["args"]["results_dir"])
+    dataset_name = config["dataset"]["dataset"]
     expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    expt_name = f"mist_{expt_name}"
+    expt_name = f"mist_{dataset_name}_{expt_name}"
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
     
@@ -108,7 +109,8 @@ def learning_to_split(config: dict,
     config_splitter = copy.deepcopy(config)
     config_splitter["dataset"]["fp_names"] = ["splitter"]
     config_splitter["model"]["params"]["fp_names"] = config_splitter["dataset"]["fp_names"]
-    splitter = mist_model.MistNet(**config_splitter["model"]["params"])
+    config_splitter["model"]["params"]["iterative_preds"] = "none"
+    splitter = mist_model.MistNetNN(mist_model.MistNet(**config_splitter["model"]["params"]))
     opt = get_optim(splitter, config)
 
     # Get the wandb logger 
@@ -127,10 +129,11 @@ def learning_to_split(config: dict,
         # Split the data 
         random_split = True if outer_loop == 0 else False
         split_stats, train_indices, test_indices = split_data(dataset, splitter, 
-                                                            config["splitter"]["train_ratio"], 
-                                                            config["train_settings"]["batch_size"], 
-                                                            config["train_settings"]["num_workers"], 
-                                                            random_split) 
+                                                              config["splitter"]["train_ratio"], 
+                                                              config["train_settings"]["batch_size"], 
+                                                              config["train_settings"]["num_workers"], 
+                                                              config["device"],
+                                                              random_split) 
 
         # Get the data modules now 
         datamodule, _ = get_data_modules(spectra_mol_pairs, train_indices, test_indices, paired_featurizer)
@@ -138,16 +141,16 @@ def learning_to_split(config: dict,
         # Get trainer and logger
         monitor = config["callbacks"]["val_monitor"]
         checkpoint_callback = ModelCheckpoint(monitor=monitor,
-                                            dirpath = results_dir,
-                                            filename = '{epoch:03d}-{val_bce_loss:.5f}', # Hack 
-                                            save_top_k = 2, mode = "min")
-
-        trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback])
+                                              dirpath = results_dir,
+                                              filename = '{epoch:03d}-{val_bce_loss:.5f}', # Hack 
+                                              save_top_k = 2, mode = "min")
+        earlystop_callback = EarlyStopping(monitor=monitor, patience=config["callbacks"]["patience"])
+        trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback, earlystop_callback])
 
         # Start the training now
         trainer.fit(predictor, datamodule = datamodule)
 
-        # # Get the gap 
+        # Get the gap 
         val_loss = trainer.validate(model = predictor, dataloaders = datamodule)[0]["val_loss"]
         test_loss = trainer.test(model = predictor, dataloaders = datamodule)[0]["test_loss"]
         gap = test_loss - val_loss

@@ -7,13 +7,15 @@ from datetime import datetime
 
 import torch
 import pytorch_lightning as pl
+from lightning.pytorch.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 from dataloader import MSDataset, Data
 from utils import read_config, load_pickle, pickle_data, write_json
 from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder
+from modules import FormulaTransformerEncoderNN
 
 from learning_to_split import set_seed, get_optim, split_data, train_splitter
 
@@ -41,6 +43,8 @@ def update_config(args, config):
     config["data"]["split_file"] = os.path.join(config["data"]["splits_folder"], config["data"]["dataset"], "splits", config["data"]["split_file"])
     config["data"]["adduct_file"] = os.path.join(config["data"]["data_folder"], config["data"]["dataset"], "all_adducts.pkl")
     config["data"]["instrument_file"] = os.path.join(config["data"]["data_folder"], config["data"]["dataset"], "all_instruments.pkl")
+    config["dataset"] = {"FP_key": "FP", "name": config["data"]["dataset"]}
+
     del config["data"]["dataset"]
     del config["data"]["data_folder"]
     del config["data"]["splits_folder"]
@@ -111,7 +115,7 @@ def write_config_local(config, config_out_path):
 def create_results_dir(results_dir):
     if not os.path.exists(results_dir): os.makedirs(results_dir)
 
-def get_model(config):
+def get_model(config, to_nn_module = False):
 
     # Get the model
     model_name = config["model"]["name"]
@@ -124,6 +128,7 @@ def get_model(config):
     elif model_name == "formula_encoder":
         model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["train_params"]["learning_rate"], 
                                                                                 weight_decay = config["train_params"]["weight_decay"])
+        if to_nn_module: model = FormulaTransformerEncoderNN(model)
     else:
         raise Exception(f"{model_name} not supported.")
     
@@ -137,8 +142,12 @@ def learning_to_split(config: dict,
     dataset = Data(datamodule.data, datamodule.process)
 
     # Update the results directory 
-    results_dir = os.path.join(config["args"]["results_dir"], config["model"]["name"])
+    results_dir = os.path.join(config["args"]["results_dir"])
     expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    model_name = config["model"]["name"]
+    dataset_name = config["dataset"]["name"]
+
+    expt_name = f"{model_name}_{dataset_name}_{expt_name}"
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
 
@@ -159,7 +168,7 @@ def learning_to_split(config: dict,
     for model in ["binned_MS_encoder", "MS_encoder", "formula_encoder"]: 
         config_splitter["model"][model]["output_dim"] = 2 # train and test split 
 
-    splitter = get_model(config_splitter)
+    splitter = get_model(config_splitter, to_nn_module = True)
     opt = get_optim(splitter, config)
 
     # Get the wandb logger 
@@ -181,21 +190,25 @@ def learning_to_split(config: dict,
                                                             config["splitter"]["train_ratio"], 
                                                             config["data"]["batch_size"], 
                                                             config["data"]["num_workers"],
+                                                            config["device"],
                                                             random_split) 
 
         # Get trainer and logger
         monitor = config["callbacks"]["monitor"]
+        checkpoint_callback = ModelCheckpoint(monitor=monitor,
+                                        dirpath = results_dir,
+                                        filename = '{epoch:03d}-{val_FP_loss:.5f}', # Hack
+                                        every_n_train_steps = config["trainer"]["log_every_n_steps"], 
+                                        save_top_k = 2, mode = "min")
         earlystop_callback = EarlyStopping(monitor=monitor, patience=config["callbacks"]["patience"])
-        trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[earlystop_callback])
+        trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback, earlystop_callback])
 
         # Start the training now
-        trainer.fit(predictor, datamodule = datamodule)
+        # trainer.fit(predictor, datamodule = datamodule)
 
         # Get the gap 
-        val_loss = trainer.validate(model = predictor, dataloaders = datamodule)[0] #["val_loss"]
-        test_loss = trainer.test(model = predictor, dataloaders = datamodule)[0]# ["test_loss"]
-        print(val_loss.keys(), test_loss.keys())
-        a = z 
+        val_loss = trainer.validate(model = predictor, dataloaders = datamodule)[0]["val_FP_loss"]
+        test_loss = trainer.test(model = predictor, dataloaders = datamodule)[0]["test_FP_loss"]
 
         gap = test_loss - val_loss
 
@@ -212,16 +225,17 @@ def learning_to_split(config: dict,
                         "best_gap":       best_gap}
             
             pickle_data(best_split, os.path.join(results_dir, "best_split.pkl"))
+            split_stats["best_gap"] = best_gap
             write_json(split_stats, os.path.join(results_dir, "splits_stats.json"))
 
         else: num_no_improvements += 1
         if num_no_improvements == config["splitter"]["patience"]: break
 
         # Train the splitter
-        train_splitter(splitter, predictor, dataset, test_indices, opt,
-                    config["data"]["batch_size"], config["splitter"]["num_batches"], config["data"]["num_workers"],
+        train_splitter(splitter, predictor, dataset, test_indices, opt, wandb_logger,
+                    config["splitter"]["batch_size"], config["splitter"]["num_batches"], config["data"]["num_workers"],
                     config, verbose = verbose)
-            
+
     # Done! Print the best split.
     if verbose:
         print("Finished!\nBest split:")

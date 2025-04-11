@@ -7,6 +7,36 @@ from torch.utils.data import Dataset, DataLoader, RandomSampler, Subset
 
 from learning_to_split.utils import optim_step
 
+@torch.no_grad()
+def jaccard_dist(FP_pred: torch.Tensor, FP: torch.Tensor) -> torch.Tensor:
+    """
+    Compute the Jaccard distance between predicted and true binary fingerprints in PyTorch.
+    
+    Args:
+        FP_pred (torch.Tensor): Predicted binary fingerprints (batch_size x num_bits), assumed to be 0/1.
+        FP (torch.Tensor): Ground truth binary fingerprints (batch_size x num_bits), assumed to be 0/1.
+
+    Returns:
+        torch.Tensor: Jaccard index for each sample in the batch.
+    """
+    # Convert to boolean if not already
+    FP_pred = FP_pred.bool()
+    FP = FP.bool()
+
+    # Intersection = bitwise AND
+    intersection = (FP & FP_pred).sum(dim=1)
+
+    # Union = bitwise OR
+    union = (FP | FP_pred).sum(dim=1)
+
+    # Avoid division by zero
+    jaccard_scores = intersection.float() / (union.float() + 1e-9)
+
+    # Get the distance 
+    jaccard_dist = 1.0 - jaccard_scores
+
+    return jaccard_dist
+
 def compute_marginal_z_loss(mask, tar_ratio, no_grad = False):
 
     '''
@@ -89,7 +119,7 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
 
     for batch, batch_test in zip(loader, test_loader):
         
-        logit = splitter.get_output(batch, config["device"])
+        logit = splitter(batch, config["device"])
         FP = batch[FP_key].to(config["device"])
         prob = F.softmax(logit, dim = -1)[:, 1] # train is position 1
 
@@ -100,22 +130,22 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
         loss_balance = compute_y_given_z_loss(prob, FP)
 
         # predictor's correctness as a loss 
-        logit_test = splitter.get_output(batch_test, config["device"])
+        logit_test = splitter(batch_test, config["device"])
 
         with torch.no_grad():
 
             FP_test = batch_test[FP_key].float().to(config["device"])
-
             FP_pred_test = predictor.get_output(batch_test, config["device"])
-            score = F.binary_cross_entropy(FP_pred_test, FP_test, reduction = "none").mean(-1)
-            score = F.sigmoid(score)
+
+            score = jaccard_dist(FP_pred_test, FP_test)
 
             # 0: test split, 1: train split
             # If we move the mistake to the test, the higher the loss, the higher pos 0 is 
             score_test = torch.concat([score[:, None], (1.0 - score)[:, None]], dim = -1)
 
-        print("logit_test:", logit_test)
+        print("logit_test:", F.softmax(logit_test))
         print("score_test", score_test)
+        
         loss_gap = F.cross_entropy(logit_test, score_test) # Move the mistake to the test 
 
         # Get the combined loss 
@@ -130,10 +160,11 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
         optim_step(splitter, opt, loss, config)
 
         # Add to wandb 
-        wandb_logger.log_metrics({"splitter/loss_ratio_step": loss_ratio.item()})
-        wandb_logger.log_metrics({"splitter/loss_balance_step": loss_balance.item()})
-        wandb_logger.log_metrics({"splitter/loss_gap_step": loss_gap.item()})
-        wandb_logger.log_metrics({"splitter/loss_step": loss.item()})
+        step = opt["optim"].state[opt["optim"].param_groups[0]["params"][-1]]["step"]
+        wandb_logger.log_metrics({"splitter/loss_ratio_step": loss_ratio.item()}, step = step)
+        wandb_logger.log_metrics({"splitter/loss_balance_step": loss_balance.item()}, step = step)
+        wandb_logger.log_metrics({"splitter/loss_gap_step": loss_gap.item()}, step = step)
+        wandb_logger.log_metrics({"splitter/loss_step": loss.item()}, step = step)
 
         # Update the stats
         stats["loss_ratio"].append(loss_ratio.item())
@@ -143,7 +174,8 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
 
         # Some printing
         print(loss_ratio.item(), loss_balance.item(), loss_gap.item())
-
+        break 
+    
     for k, v in stats.items():
         stats[k] = sum(v) / len(v)
 
@@ -151,7 +183,7 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
     wandb_logger.log_metrics({"splitter/loss_ratio_epoch": stats["loss_ratio"]})
     wandb_logger.log_metrics({"splitter/loss_balance_epoch": stats["loss_balance"]})
     wandb_logger.log_metrics({"splitter/loss_gap_epoch": stats["loss_gap"]})
-    wandb_logger.log_metrics({"splitter/loss_epoch": stats["loss"]})
+    # wandb_logger.log_metrics({"splitter/loss_epoch": stats["loss"]})
 
     return stats
 

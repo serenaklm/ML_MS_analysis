@@ -4,8 +4,8 @@ seed: 17
 dataset:
   fp_names: ["morgan4096"]
   data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/mist/"
-  dataset: "nist2023"
-  split_filename: "inchikey_vanilla.tsv"
+  dataset: "canopus"
+  split_filename: "random.tsv"
   cache_featurizers: True
   spec_features: "peakformula"
   mol_features: "fingerprint"
