@@ -15,7 +15,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from dataloader import MSDataset, Data
 from utils import read_config, load_pickle, pickle_data, write_json
 from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder
-from modules import FormulaTransformerEncoderNN
+from modules import MSBinnedModelNN, MSTransformerEncoderNN, FormulaTransformerEncoderNN
 
 from learning_to_split import set_seed, get_optim, split_data, train_splitter
 
@@ -122,13 +122,18 @@ def get_model(config, to_nn_module = False):
     if model_name == "binned_MS_encoder":
         model = MSBinnedModel(**config["model"]["binned_MS_encoder"], lr = config["train_params"]["learning_rate"], 
                                                                       weight_decay = config["train_params"]["weight_decay"])
+        if to_nn_module: model = MSBinnedModelNN(model)
+        
     elif model_name == "MS_encoder":
         model = MSTransformerEncoder(**config["model"]["MS_encoder"], lr = config["train_params"]["learning_rate"], 
                                                                       weight_decay = config["train_params"]["weight_decay"])
+        if to_nn_module: model = MSTransformerEncoderNN(model)
+
     elif model_name == "formula_encoder":
         model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["train_params"]["learning_rate"], 
                                                                                 weight_decay = config["train_params"]["weight_decay"])
         if to_nn_module: model = FormulaTransformerEncoderNN(model)
+    
     else:
         raise Exception(f"{model_name} not supported.")
     
@@ -204,7 +209,7 @@ def learning_to_split(config: dict,
         trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback, earlystop_callback])
 
         # Start the training now
-        # trainer.fit(predictor, datamodule = datamodule)
+        trainer.fit(predictor, datamodule = datamodule)
 
         # Get the gap 
         val_loss = trainer.validate(model = predictor, dataloaders = datamodule)[0]["val_FP_loss"]

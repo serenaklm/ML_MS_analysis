@@ -36,9 +36,6 @@ class MSBinnedModel(pl.LightningModule):
         self.include_adduct = include_adduct
         self.include_CE = include_CE
         self.include_instrument = include_instrument
-        
-        # Get a mean logger 
-        self.avg_loss_train, self.avg_loss_val = [], []
 
         # Get the MLP 
         feats_emb = 0
@@ -117,18 +114,13 @@ class MSBinnedModel(pl.LightningModule):
 
         # Forward pass
         pred, _ = self(binned_ms, adduct, CE, instrument)
-
-        # Hack for splitter 
-        if pred.shape[-1] == 2: 
-            pred = F.softmax(pred, dim = -1)
-        else: 
-            pred = F.sigmoid(pred, dim = -1)
-            
+        
+        # Make sure that each bit is between 0 and 1 
+        pred = F.sigmoid(pred)
+        
         return pred
     
     def training_step(self, batch, batch_idx):
-
-        if batch is None: return None
 
         # Unpack the batch 
         binned_ms = batch["binned_MS"]
@@ -156,14 +148,9 @@ class MSBinnedModel(pl.LightningModule):
         self.log("train_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("train_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
-        # Add to the tracker 
-        self.avg_loss_train.append(FP_loss.item())
-
         return loss 
 
     def validation_step(self, batch, batch_idx):
-
-        if batch is None: return None
 
         # Unpack the batch 
         binned_ms = batch["binned_MS"]
@@ -188,19 +175,78 @@ class MSBinnedModel(pl.LightningModule):
         self.log("val_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("val_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
-    # def on_validation_epoch_end(self):
+        return {"loss:" : loss, "FP_loss": FP_loss, "reconstruction_loss": reconstruction_loss}
 
-    #     train_avg = np.mean(self.avg_loss_train)
-    #     val_avg = np.mean(self.avg_loss_val)
+    def test_step(self, batch, batch_idx):
 
-    #     self.log("train_average_loss", train_avg, prog_bar = True, sync_dist = True)
-    #     self.log("val_average_loss", val_avg, prog_bar = True, sync_dist = True)
+        # Unpack the batch 
+        binned_ms = batch["binned_MS"]
+        FP = batch["FP"]
 
-    #     # Reset the tracker 
-    #     self.avg_loss_train, self.avg_loss_val = [], [] 
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
+
+        # Forward pass
+        FP_pred, binned_ms_pred = self(binned_ms, adduct, CE, instrument)
+
+        # Compute the FP prediction loss 
+        FP_loss = self.compute_loss(FP_pred, FP)
+
+        # Compute the reconstruction loss
+        reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
+
+        # Get the total loss
+        loss = FP_loss + self.reconstruction_weight * reconstruction_loss
+
+        # Log the validation loss
+        self.log("test_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        self.log("test_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+
+        return {"loss:" : loss, "FP_loss": FP_loss, "reconstruction_loss": reconstruction_loss}
 
     def configure_optimizers(self):
        
        optimizer = torch.optim.Adam(self.parameters(), lr = self.lr, weight_decay = self.weight_decay)
 
        return optimizer
+
+class MSBinnedModelNN(nn.Module):
+
+    def __init__(self, model: MSBinnedModel):
+
+        super().__init__()
+
+        # Transfer weights or layers from the Lightning model
+        self.include_adduct = model.include_adduct 
+        self.include_CE = model.include_CE 
+        self.include_instrument = model.include_instrument 
+
+        self.adduct_embs = model.adduct_embs
+        self.CE_embs = model.CE_embs
+        self.instrument_embs = model.instrument_embs 
+
+        self.MLP = model.MLP
+        self.pred_layer = model.pred_layer
+
+    def forward(self, batch, device):
+
+        # Get the inputs and move to the device
+        binned_ms = batch["binned_MS"].to(device)
+
+        adduct, CE, instrument = None, None, None
+        if self.include_adduct: adduct = batch["adduct"].to(device)
+        if self.include_CE: CE = batch["CE"].to(device)
+        if self.include_instrument: instrument = batch["instrument"].to(device)
+
+        # Get the embeddings 
+        if self.include_adduct: binned_ms = torch.concat([binned_ms, self.adduct_embs(adduct)], dim = -1)
+        if self.include_CE: binned_ms = torch.concat([binned_ms, self.CE_embs(CE)], dim = -1)
+        if self.include_instrument: binned_ms = torch.concat([binned_ms, self.instrument_embs(instrument)], dim = -1)
+        emb = self.MLP(binned_ms)
+
+        # Get the FP prediction 
+        pred = self.pred_layer(emb)
+
+        return pred

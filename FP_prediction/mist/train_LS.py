@@ -89,7 +89,7 @@ def learning_to_split(config: dict,
     results_dir = os.path.join(config["args"]["results_dir"])
     dataset_name = config["dataset"]["dataset"]
     expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    expt_name = f"mist_{dataset_name}_{expt_name}"
+    expt_name = f"MIST_{dataset_name}_{expt_name}"
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
     

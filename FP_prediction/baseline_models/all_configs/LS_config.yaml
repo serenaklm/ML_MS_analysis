@@ -28,7 +28,7 @@ train_params:
   name: "Adam"
 
 model:
-  name: "formula_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
+  name: "MS_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
 
   feats_params: 
     include_adduct: True 
