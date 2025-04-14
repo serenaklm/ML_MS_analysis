@@ -333,7 +333,7 @@ def get_influence_scores(folder, output_path, top_k):
         query_dataset=test_data,
         train_dataset=train_data,
         per_device_query_batch_size=16,
-        per_device_train_batch_size=128,
+        per_device_train_batch_size=64,
     )
 
     # Load the scores 
@@ -359,6 +359,7 @@ if __name__ == "__main__":
         for model in os.listdir(FP_folder):
             model_folder = os.path.join(FP_folder, model)
             for checkpoint in os.listdir(model_folder):
+                if "NIST2023" not in checkpoint: continue 
                 all_folders.append(os.path.join(model_folder, checkpoint))
 
     # Iterate through all folders to get influence scores for the models

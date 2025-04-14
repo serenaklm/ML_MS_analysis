@@ -174,8 +174,7 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
 
         # Some printing
         print(loss_ratio.item(), loss_balance.item(), loss_gap.item())
-        break 
-    
+
     for k, v in stats.items():
         stats[k] = sum(v) / len(v)
 
@@ -183,7 +182,7 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
     wandb_logger.log_metrics({"splitter/loss_ratio_epoch": stats["loss_ratio"]})
     wandb_logger.log_metrics({"splitter/loss_balance_epoch": stats["loss_balance"]})
     wandb_logger.log_metrics({"splitter/loss_gap_epoch": stats["loss_gap"]})
-    # wandb_logger.log_metrics({"splitter/loss_epoch": stats["loss"]})
+    wandb_logger.log_metrics({"splitter/loss_epoch": stats["loss"]})
 
     return stats
 

@@ -171,6 +171,9 @@ class MSBinnedModel(pl.LightningModule):
         # Compute the reconstruction loss
         reconstruction_loss = F.mse_loss(binned_ms_pred, binned_ms)
 
+        # Get the total loss
+        loss = FP_loss + self.reconstruction_weight * reconstruction_loss
+
         # Log the validation loss
         self.log("val_FP_loss", FP_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("val_reconstruction_loss", reconstruction_loss, prog_bar = True, sync_dist = True, on_epoch = True)
