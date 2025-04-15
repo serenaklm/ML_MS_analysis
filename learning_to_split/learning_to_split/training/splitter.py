@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader, RandomSampler, Subset
 from learning_to_split.utils import optim_step
 
 @torch.no_grad()
-def jaccard_dist(FP_pred: torch.Tensor, FP: torch.Tensor) -> torch.Tensor:
+def jaccard_dist(FP_pred: torch.Tensor, FP: torch.Tensor, threshold:float = 0.5) -> torch.Tensor:
     """
     Compute the Jaccard distance between predicted and true binary fingerprints in PyTorch.
     
@@ -20,6 +20,7 @@ def jaccard_dist(FP_pred: torch.Tensor, FP: torch.Tensor) -> torch.Tensor:
         torch.Tensor: Jaccard index for each sample in the batch.
     """
     # Convert to boolean if not already
+    FP_pred = FP_pred > threshold
     FP_pred = FP_pred.bool()
     FP = FP.bool()
 
@@ -36,6 +37,27 @@ def jaccard_dist(FP_pred: torch.Tensor, FP: torch.Tensor) -> torch.Tensor:
     jaccard_dist = 1.0 - jaccard_scores
 
     return jaccard_dist
+
+@torch.no_grad()
+def cosine_dist(FP_pred: torch.Tensor, FP: torch.Tensor) -> torch.Tensor:
+
+    cos = nn.CosineSimilarity(dim=1, eps=1e-6)
+    similarity = (cos(FP_pred, FP) + 1) / 2 #[-1,1]
+    distance = 1.0 - similarity 
+
+    return distance
+
+def compute_gap_loss(mask, FP_pred:torch.Tensor, FP: torch.Tensor, threshold: float = 0.5) -> torch.Tensor: 
+
+    loss = jaccard_dist(FP_pred, FP, threshold)
+    score = torch.concat([loss[:, None], (1.0 - loss)[:, None]], dim = -1)
+
+    loss_gap = F.cross_entropy(mask, score) # Move the mistake to the test 
+
+    print("logit:", F.softmax(mask, dim = -1))
+    print("score", score)
+
+    return loss_gap
 
 def compute_marginal_z_loss(mask, tar_ratio, no_grad = False):
 
@@ -67,6 +89,7 @@ def compute_y_given_z_loss(mask, FP, no_grad = False, eps = 1e-6):
     '''
 
     p_given_train, p_given_test, p_original = [],[], [] 
+    mask = mask[:, 1] # 1 is train 
 
     for p in range(FP.shape[1]):
 
@@ -143,9 +166,6 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
             # If we move the mistake to the test, the higher the loss, the higher pos 0 is 
             score_test = torch.concat([score[:, None], (1.0 - score)[:, None]], dim = -1)
 
-        print("logit_test:", F.softmax(logit_test))
-        print("score_test", score_test)
-        
         loss_gap = F.cross_entropy(logit_test, score_test) # Move the mistake to the test 
 
         # Get the combined loss 

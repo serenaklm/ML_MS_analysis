@@ -102,7 +102,7 @@ class MSDataset(pl.LightningDataModule):
     
     @property
     def train_data(self) -> List:
-        """The validation data."""
+        """The Training data."""
         return self._train
 
     @property
@@ -114,6 +114,15 @@ class MSDataset(pl.LightningDataModule):
     def test_data(self) -> List:
         """The testing data."""
         return self._test
+
+    def set_train_data(self, train):
+        self._train = train
+    
+    def set_val_data(self, val):
+        self._val = val 
+
+    def set_test_data(self, test):
+        self._test = test 
 
     def prepare_data(self):
         """Only happens on single GPU, ATTENTION: do no assign states."""

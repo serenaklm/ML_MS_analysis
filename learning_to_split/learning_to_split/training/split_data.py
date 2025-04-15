@@ -36,7 +36,7 @@ def split_data(data: Dataset = None,
                               prob * train_ratio], dim = -1)  # train split prob
             
         else:
-            logits = splitter(batch, device)
+            logits = splitter.get_output(batch)
             prob = F.softmax(logits, dim = -1)
 
         # Sample the binary mask
@@ -51,6 +51,8 @@ def split_data(data: Dataset = None,
     train_indices = total_mask.nonzero().squeeze(1).tolist()
     test_indices = (1 - total_mask).nonzero().squeeze(1).tolist()
 
+    splitter.train() 
+    
     # Get some stats 
     split_stats = {}
     split_stats["train_size"] = len(train_indices)

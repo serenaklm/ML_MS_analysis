@@ -54,19 +54,25 @@ train_settings:
 
 splitter:
   patience: 20 # in case it is hard to train
-  convergence_threshold: 0.003
   num_batches: 500
-  batch_size: 64
   w_gap: 1.0
   w_ratio: 1.0
   w_balance: 1.0
   train_ratio: 0.8
   clip_grad_norm: 0
+  monitor: "splitter/loss" # Placeholder for now 
+  
+splitter_trainer:
+  max_epochs: 25
+  devices: 2
+  limit_val_batches: 0
+  accelerator: "gpu"
+  gradient_clip_val: 5 
 
 trainer:
-  max_epochs: 15
+  max_epochs: 25
   devices: 2
-  log_every_n_steps: 5
+  log_every_n_steps: 50
   accelerator: "gpu"
   gradient_clip_val: 5 
 

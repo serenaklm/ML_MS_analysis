@@ -1,12 +1,13 @@
 import os
 import yaml
 import copy
-import wandb
+import random
 import argparse
 from datetime import datetime
 
 import torch
 import pytorch_lightning as pl
+from pytorch_lightning import seed_everything
 from lightning.pytorch.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
@@ -15,9 +16,9 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from dataloader import MSDataset, Data
 from utils import read_config, load_pickle, pickle_data, write_json
 from modules import MSBinnedModel, MSTransformerEncoder, FormulaTransformerEncoder
-from modules import MSBinnedModelNN, MSTransformerEncoderNN, FormulaTransformerEncoderNN
+from modules import MSBinnedModelSplitter, MSTransformerEncoderSplitter, FormulaTransformerEncoderSplitter
 
-from learning_to_split import set_seed, get_optim, split_data, train_splitter
+from learning_to_split import split_data
 
 def update_config(args, config):
     
@@ -34,7 +35,8 @@ def update_config(args, config):
 
     if devices > 1:
         config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
-
+        config.setdefault("splitter_trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
+        
     if args.disable_checkpoint:
         config["trainer"]["enable_checkpointing"] = False
 
@@ -115,36 +117,96 @@ def write_config_local(config, config_out_path):
 def create_results_dir(results_dir):
     if not os.path.exists(results_dir): os.makedirs(results_dir)
 
-def get_model(config, to_nn_module = False):
+def get_predictor(config):
 
     # Get the model
     model_name = config["model"]["name"]
     if model_name == "binned_MS_encoder":
         model = MSBinnedModel(**config["model"]["binned_MS_encoder"], lr = config["train_params"]["learning_rate"], 
                                                                       weight_decay = config["train_params"]["weight_decay"])
-        if to_nn_module: model = MSBinnedModelNN(model)
-        
+
     elif model_name == "MS_encoder":
         model = MSTransformerEncoder(**config["model"]["MS_encoder"], lr = config["train_params"]["learning_rate"], 
                                                                       weight_decay = config["train_params"]["weight_decay"])
-        if to_nn_module: model = MSTransformerEncoderNN(model)
 
     elif model_name == "formula_encoder":
         model = FormulaTransformerEncoder(**config["model"]["formula_encoder"], lr = config["train_params"]["learning_rate"], 
                                                                                 weight_decay = config["train_params"]["weight_decay"])
-        if to_nn_module: model = FormulaTransformerEncoderNN(model)
-    
+
     else:
         raise Exception(f"{model_name} not supported.")
     
     return model
 
+def get_splitter(config):
+
+    model_name = config["model"]["name"]
+
+    # Add params for the splitter
+    splitter_model_params = copy.deepcopy(config["model"][model_name])
+    splitter_model_params["tar_ratio"] = config["splitter"]["train_ratio"]
+    splitter_model_params["w_gap"] = config["splitter"]["w_gap"]
+    splitter_model_params["w_ratio"] = config["splitter"]["w_ratio"]
+    splitter_model_params["w_balance"] = config["splitter"]["w_balance"]
+
+    del splitter_model_params["pos_weight"]
+    del splitter_model_params["reconstruction_weight"]
+    del splitter_model_params["output_dim"]
+
+    # Get the splitter now     
+    if model_name == "binned_MS_encoder":
+        model = MSBinnedModelSplitter(**splitter_model_params, lr = config["train_params"]["learning_rate"], 
+                                                                      weight_decay = config["train_params"]["weight_decay"])
+
+    elif model_name == "MS_encoder":
+        model = MSTransformerEncoderSplitter(**splitter_model_params, lr = config["train_params"]["learning_rate"], 
+                                                                      weight_decay = config["train_params"]["weight_decay"])
+
+    elif model_name == "formula_encoder":
+        model = FormulaTransformerEncoderSplitter(**splitter_model_params, lr = config["train_params"]["learning_rate"], 
+                                                                           weight_decay = config["train_params"]["weight_decay"])
+
+    else:
+        raise Exception(f"{model_name} not supported.")
+
+    return model
+
+def get_datamodule_predictor(datamodule, all_ids, train_indices, test_indices):
+
+    # Get the new datamodule 
+    random.shuffle(train_indices)
+    n_train = int(0.8 * len(train_indices))
+
+    new_train_indices =  [all_ids[i] for i in train_indices[:n_train]]
+    val_indices = [all_ids[i] for i in train_indices[n_train:]]
+    test_indices = [all_ids[i] for i in test_indices]
+
+    datamodule.set_train_data(new_train_indices)
+    datamodule.set_val_data(val_indices)
+    datamodule.set_test_data(test_indices)
+
+    return datamodule
+
+def get_datamodule_splitter(datamodule, all_ids, test_indices):
+
+    test_indices = [all_ids[i] for i in test_indices]
+
+    datamodule.set_train_data(test_indices)
+    datamodule.set_val_data(test_indices)
+    datamodule.set_test_data(test_indices)
+
+    return datamodule
+
 def learning_to_split(config: dict, 
                       verbose: bool = True):
-    
+
+    # Set a random seed 
+    seed_everything(config["seed"])
+
     # Get the dataset 
     datamodule = MSDataset(**config["data"])
-    dataset = Data(datamodule.data, datamodule.process)
+    all_ids = datamodule.data
+    dataset = Data(all_ids, datamodule.process)
 
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"])
@@ -152,7 +214,7 @@ def learning_to_split(config: dict,
     model_name = config["model"]["name"]
     dataset_name = config["dataset"]["name"]
 
-    expt_name = f"{model_name}_{dataset_name}_{expt_name}"
+    expt_name = f"{model_name}_{dataset_name}"
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
 
@@ -169,12 +231,7 @@ def learning_to_split(config: dict,
     assert train_ratio > 0.0 and train_ratio < 1.0, "Training ratio needs to be between 0.0 and 1.0."
     
     # Get the splitter
-    config_splitter = copy.deepcopy(config)
-    for model in ["binned_MS_encoder", "MS_encoder", "formula_encoder"]: 
-        config_splitter["model"][model]["output_dim"] = 2 # train and test split 
-
-    splitter = get_model(config_splitter, to_nn_module = True)
-    opt = get_optim(splitter, config)
+    splitter = get_splitter(config)
 
     # Get the wandb logger 
     wandb_logger = WandbLogger(project = config["project"],
@@ -187,33 +244,35 @@ def learning_to_split(config: dict,
     # Start training here
     for outer_loop in range(config["train_params"]["n_outer_loops"]):
 
-        predictor = get_model(config)
+        predictor = get_predictor(config)
         
         # Split the data 
         random_split = True if outer_loop == 0 else False
         split_stats, train_indices, test_indices = split_data(dataset, splitter, 
-                                                            config["splitter"]["train_ratio"], 
-                                                            config["data"]["batch_size"], 
-                                                            config["data"]["num_workers"],
-                                                            config["device"],
-                                                            random_split) 
+                                                              config["splitter"]["train_ratio"], 
+                                                              config["data"]["batch_size"], 
+                                                              config["data"]["num_workers"],
+                                                              config["device"],
+                                                              random_split) 
 
         # Get trainer and logger
         monitor = config["callbacks"]["monitor"]
         checkpoint_callback = ModelCheckpoint(monitor=monitor,
                                         dirpath = results_dir,
-                                        filename = '{epoch:03d}-{val_FP_loss:.5f}', # Hack
+                                        filename = 'best_predictor', # Hack
                                         every_n_train_steps = config["trainer"]["log_every_n_steps"], 
-                                        save_top_k = 2, mode = "min")
+                                        save_top_k = 1, mode = "min")
+        
         earlystop_callback = EarlyStopping(monitor=monitor, patience=config["callbacks"]["patience"])
         trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback, earlystop_callback])
 
         # Start the training now
-        trainer.fit(predictor, datamodule = datamodule)
+        predictor_datamodule = get_datamodule_predictor(MSDataset(**config["data"]), all_ids, train_indices, test_indices)
+        trainer.fit(predictor, datamodule = predictor_datamodule)
 
         # Get the gap 
-        val_loss = trainer.validate(model = predictor, dataloaders = datamodule)[0]["val_FP_loss"]
-        test_loss = trainer.test(model = predictor, dataloaders = datamodule)[0]["test_FP_loss"]
+        val_loss = trainer.validate(model = predictor, dataloaders = predictor_datamodule)[0]["val_FP_loss"]
+        test_loss = trainer.test(model = predictor, dataloaders = predictor_datamodule)[0]["test_FP_loss"]
 
         gap = test_loss - val_loss
 
@@ -236,11 +295,16 @@ def learning_to_split(config: dict,
         else: num_no_improvements += 1
         if num_no_improvements == config["splitter"]["patience"]: break
 
-        # Train the splitter
-        train_splitter(splitter, predictor, dataset, test_indices, opt, wandb_logger,
-                    config["splitter"]["batch_size"], config["splitter"]["num_batches"], config["data"]["num_workers"],
-                    config, verbose = verbose)
+        # Add predictor to the splitter 
+        splitter.add_predictor(predictor)
 
+        # Train the splitter
+        splitter_datamodule = get_datamodule_splitter(MSDataset(**config["data"]), all_ids, test_indices)
+        splitter_monitor = config["splitter"]["monitor"]
+        splitter_earlystop_callback = EarlyStopping(monitor=splitter_monitor, patience=config["splitter"]["patience"])
+        splitter_trainer = pl.Trainer(**config["splitter_trainer"], logger = wandb_logger, callbacks=[splitter_earlystop_callback])
+        splitter_trainer.fit(splitter, datamodule = splitter_datamodule)
+        
     # Done! Print the best split.
     if verbose:
         print("Finished!\nBest split:")
@@ -264,9 +328,6 @@ if __name__ == "__main__":
     # Read in the config, data, then start to find the worst split
     config = read_config(os.path.join(args.config_dir, args.config_file))
     config = update_config(args, config)
-
-    # Set seed
-    set_seed(config["seed"])
 
     # Run learning to split now 
     learning_to_split(config)

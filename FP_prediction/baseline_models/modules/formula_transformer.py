@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from learning_to_split import compute_gap_loss, compute_marginal_z_loss, compute_y_given_z_loss
+
 class LearnableFourierFeatures(nn.Module):
     
     def __init__(self, pos_dim, f_dim, h_dim, d_dim, gamma =1.0):  
@@ -158,16 +160,16 @@ class FormulaTransformerEncoder(pl.LightningModule):
 
         return loss
 
-    def get_output(self, batch, device):
+    def encode_spectra(self, batch):
 
         # Unpack the batch 
-        intensities, formula, mask = batch["intensities"].to(device), batch["formula"].to(device), batch["mask"].to(device)
-        binned_ms = batch["binned_MS"].to(device)
+        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
+        binned_ms = batch["binned_MS"]
 
         adduct, CE, instrument = None, None, None
-        if self.include_adduct: adduct = batch["adduct"].to(device)
-        if self.include_CE: CE = batch["CE"].to(device)
-        if self.include_instrument: instrument = batch["instrument"].to(device)
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
 
         # Forward pass
         pred, _ = self(intensities, formula, mask, binned_ms, adduct, CE, instrument)
@@ -273,38 +275,104 @@ class FormulaTransformerEncoder(pl.LightningModule):
 
        return optimizer
 
-class FormulaTransformerEncoderNN(nn.Module):
+class FormulaTransformerEncoderSplitter(pl.LightningModule):
 
-    def __init__(self, model: FormulaTransformerEncoder):
+    def __init__(self, lr: float = 1e-4,
+                       weight_decay: float = 0.10, 
+                       w_gap: float = 1.0,
+                       w_ratio: float = 1.0,
+                       w_balance: float = 1.0,
+                       tar_ratio: float = 0.8,
+                       n_heads: int = 6,
+                       n_layers: int = 12,
+                       n_atoms: int = 4,
+                       input_dim: int = 1000,
+                       model_dim: int = 256,
+                       hidden_dim: int = 4096,
+                       dropout_rate: float = 0.2,
+                       include_adduct: bool = False,
+                       include_CE: bool = False, 
+                       include_instrument: bool = False,
+                       n_adducts: int = 10, 
+                       n_CEs: int = 10,
+                       n_instruments: int = 10):
 
         super().__init__()
 
-        # Transfer weights or layers from the Lightning model
-        self.include_adduct = model.include_adduct 
-        self.include_CE = model.include_CE 
-        self.include_instrument = model.include_instrument 
+        # Set some params
+        self.n_heads = n_heads
+        self.n_layers = n_layers
+        self.include_adduct = include_adduct
+        self.include_CE = include_CE
+        self.include_instrument = include_instrument
 
-        self.adduct_embs = model.adduct_embs
-        self.CE_embs = model.CE_embs
-        self.instrument_embs = model.instrument_embs 
+        # Get the training params 
+        self.w_gap = w_gap 
+        self.w_ratio = w_ratio 
+        self.w_balance = w_balance
+        self.total = w_gap + w_ratio + w_balance
+        self.tar_ratio = tar_ratio
+        self.lr = lr
+        self.weight_decay = weight_decay
 
-        self.binned_ms_encoder = model.binned_ms_encoder
-        self.formula_encoder = model.formula_encoder
-        self.intensity_encoder = model.intensity_encoder
-        self.peaks_encoder = model.peaks_encoder
-        self.MS_encoder = model.MS_encoder
-        self.pred_layer = model.pred_layer
+        # Get all the encoders
+        self.formula_encoder = nn.Sequential(nn.Linear(n_atoms, hidden_dim),
+                                             nn.GELU(),
+                                             nn.Linear(hidden_dim, model_dim))
+        
+        self.intensity_encoder = LearnableFourierFeatures(1, model_dim, hidden_dim, model_dim)
+        self.peaks_encoder = nn.Sequential(nn.Linear(model_dim * 2, hidden_dim),
+                                           nn.GELU(),
+                                           nn.Linear(hidden_dim, model_dim))
+        
+        encoder_layer = nn.TransformerEncoderLayer(d_model = model_dim, nhead = n_heads, batch_first = True)
+        self.MS_encoder = nn.TransformerEncoder(encoder_layer, num_layers = n_layers)
 
-    def forward(self, batch, device):
+        feats_emb = 0
+        if self.include_CE: feats_emb += model_dim
+        if self.include_adduct: feats_emb += model_dim
+        if self.include_instrument: feats_emb += model_dim
+        self.binned_ms_encoder = nn.Sequential(nn.Linear(input_dim + feats_emb, model_dim),
+                                               nn.GELU(),
+                                               nn.Dropout(dropout_rate),
+                                               nn.Linear(model_dim, hidden_dim),
+                                               nn.GELU(),
+                                               nn.Dropout(dropout_rate),
+                                               nn.Linear(hidden_dim, hidden_dim),
+                                               nn.GELU(),
+                                               nn.Dropout(dropout_rate),
+                                               nn.Linear(hidden_dim, model_dim))
+        # Get the prediction layer 
+        mul = 2
+        self.pred_layer = nn.Sequential(nn.Linear(model_dim * mul, hidden_dim),
+                                        nn.GELU(),
+                                        nn.Linear(hidden_dim, 2))
+
+        # Get embeddings for the adducts, CEs and instruments 
+        if self.include_adduct: self.adduct_embs = nn.Embedding(n_adducts, model_dim)
+        if self.include_CE: self.CE_embs = nn.Embedding(n_CEs, model_dim)
+        if self.include_instrument: self.instrument_embs = nn.Embedding(n_instruments, model_dim)
+
+    def add_predictor(self, predictor):
+        self.predictor = predictor
+        self.predictor.eval()
+
+    @torch.no_grad()
+    def _get_FP(self, batch):
+
+        FP_pred = self.predictor.encode_spectra(batch)
+        return FP_pred
+
+    def encode_spectra(self, batch):
 
         # Get the inputs and move to the device
-        intensities, formula, mask = batch["intensities"].to(device), batch["formula"].to(device), batch["mask"].to(device)
-        binned_ms = batch["binned_MS"].to(device)
+        intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
+        binned_ms = batch["binned_MS"]
 
         adduct, CE, instrument = None, None, None
-        if self.include_adduct: adduct = batch["adduct"].to(device)
-        if self.include_CE: CE = batch["CE"].to(device)
-        if self.include_instrument: instrument = batch["instrument"].to(device)
+        if self.include_adduct: adduct = batch["adduct"]
+        if self.include_CE: CE = batch["CE"]
+        if self.include_instrument: instrument = batch["instrument"]
 
         # Get the embeddings 
         if self.include_adduct: binned_ms = torch.concat([binned_ms, self.adduct_embs(adduct)], dim = -1)
@@ -325,7 +393,45 @@ class FormulaTransformerEncoderNN(nn.Module):
         # Merge the features together
         feats = torch.concat([MS_emb, emb], dim = -1)
 
-        # Get the FP prediction 
+        # Get the prediction
         pred = self.pred_layer(feats)
 
         return pred
+
+    def training_step(self, batch, batch_idx):
+        
+        """Training step"""
+
+        pred = self.encode_spectra(batch)
+        FP = batch["FP"]
+        
+        # Get the gap loss 
+        FP_pred = self._get_FP(batch)
+        gap_loss = compute_gap_loss(pred, FP_pred, FP)
+
+        # Get the balance loss
+        balance_loss = compute_y_given_z_loss(pred, FP)
+
+        # Get the ratio loss 
+        ratio_loss, _ = compute_marginal_z_loss(pred, tar_ratio = self.tar_ratio)
+
+        # Get the total loss 
+        loss = (self.w_gap * gap_loss + self.w_balance * balance_loss + self.w_ratio * ratio_loss) / self.total 
+
+        self.log("splitter/gap_loss", gap_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        self.log("splitter/balance_loss", balance_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        self.log("splitter/ratio_loss", ratio_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        self.log("splitter/loss", loss, prog_bar = True, sync_dist = True, on_epoch = True)
+
+        return {"gap_loss": gap_loss, "balance_loss": balance_loss, "ratio_loss": ratio_loss, "loss": loss}
+
+    def get_output(self, batch):
+
+        pred = self.encode_spectra(batch)
+        return pred
+
+    def configure_optimizers(self):
+       
+       optimizer = torch.optim.Adam(self.parameters(), lr = self.lr, weight_decay = self.weight_decay)
+
+       return optimizer

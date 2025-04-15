@@ -359,7 +359,6 @@ if __name__ == "__main__":
         for model in os.listdir(FP_folder):
             model_folder = os.path.join(FP_folder, model)
             for checkpoint in os.listdir(model_folder):
-                if "NIST2023" not in checkpoint: continue 
                 all_folders.append(os.path.join(model_folder, checkpoint))
 
     # Iterate through all folders to get influence scores for the models

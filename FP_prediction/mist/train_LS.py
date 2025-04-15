@@ -9,6 +9,7 @@ from datetime import datetime
 
 import torch
 import pytorch_lightning as pl
+from pytorch_lightning import seed_everything
 from lightning.pytorch.loggers import WandbLogger
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
@@ -18,7 +19,7 @@ from utils import read_config, pickle_data, write_json
 
 from model import mist_model
 from mist.data import datasets, featurizers
-from learning_to_split import set_seed, get_optim, split_data, train_splitter
+from learning_to_split import split_data
 
 def update_config(args, config):
 
@@ -41,7 +42,6 @@ def update_config(args, config):
     config["dataset"]["spec_folder"] = os.path.join(data_folder, dataset, "spec_folder")
     config["dataset"]["magma_folder"] = os.path.join(data_folder, dataset, "magma_outputs", "magma_tsv")
     config["dataset"]["split_file"] = os.path.join(data_folder, dataset, "splits", config["dataset"]["split_filename"])
-    config["dataset"]["FP_key"] = "mols"
 
     # Add the device 
     device_id = config["device"]
@@ -74,15 +74,28 @@ def get_data_modules(spectra_mol_pairs, train_indices, test_indices, paired_feat
 
     datamodule = datasets.SpecDataModule(train_dataset, val_dataset, test_dataset, **config["train_settings"])
 
-    return datamodule, (val_dataset, test_dataset)
+    return datamodule
+
+def get_data_modules_splitter(spectra_mol_pairs, test_indices, paired_featurizer):
+
+    dataset = datasets.SpectraMolDataset(
+        spectra_mol_list = [spectra_mol_pairs[i] for i in test_indices], featurizer=paired_featurizer, **config["train_settings"])
+
+    datamodule = datasets.SpecDataModule(dataset, dataset, dataset, **config["train_settings"]) # no difference in the set, model just needs to learn
+
+    return datamodule
 
 def learning_to_split(config: dict, 
                       verbose: bool = True):
+
+    # Set a random seed 
+    seed_everything(config["seed"])
 
     # Get the dataset
     spectra_mol_pairs = datasets.get_paired_spectra(**config["dataset"])
     spectra_mol_pairs = list(zip(*spectra_mol_pairs))
     paired_featurizer = featurizers.get_paired_featurizer(**config["dataset"])
+
     dataset = Data(data = spectra_mol_pairs, train_mode = True, featurizer = paired_featurizer)
 
     # Update the results directory 
@@ -106,20 +119,33 @@ def learning_to_split(config: dict,
     assert train_ratio > 0.0 and train_ratio < 1.0, "Training ratio needs to be between 0.0 and 1.0."
 
     # Get the splitter
-    config_splitter = copy.deepcopy(config)
-    config_splitter["dataset"]["fp_names"] = ["splitter"]
-    config_splitter["model"]["params"]["fp_names"] = config_splitter["dataset"]["fp_names"]
-    config_splitter["model"]["params"]["iterative_preds"] = "none"
-    splitter = mist_model.MistNetNN(mist_model.MistNet(**config_splitter["model"]["params"]))
-    opt = get_optim(splitter, config)
+    # Remove params that we need for FP prediction but not for the splitter 
+    splitter_model_params = copy.deepcopy(config["model"]["params"])
+    splitter_model_params["tar_ratio"] = train_ratio
+    splitter_model_params["w_gap"] = config["splitter"]["w_gap"]
+    splitter_model_params["w_ratio"] = config["splitter"]["w_ratio"]
+    splitter_model_params["w_balance"] = config["splitter"]["w_balance"]
+
+    del splitter_model_params["magma_loss_lambda"]
+    del splitter_model_params["iterative_preds"]
+    del splitter_model_params["iterative_loss_weight"]
+    del splitter_model_params["shuffle_train"]
+    del splitter_model_params["loss_fn"]
+    del splitter_model_params["pos_weight"]
+    del splitter_model_params["refine_layers"]
+    del splitter_model_params["fp_names"]
+    del splitter_model_params["magma_modulo"]
+    del splitter_model_params["magma_aux_loss"]
+
+    splitter = mist_model.MistNetSplitter(**splitter_model_params)
 
     # Get the wandb logger 
     wandb_logger = WandbLogger(project = config["project"],
-                        config = config,
-                        group = config["args"]["config_file"].replace(".yaml", ""),
-                        entity = config["args"]["user"],
-                        name = expt_name,
-                        log_model = False)
+                               config = config,
+                               group = config["args"]["config_file"].replace(".yaml", ""),
+                               entity = config["args"]["user"],
+                               name = expt_name,
+                               log_model = False)
 
     # Start training here
     for outer_loop in range(config["train_params"]["n_outer_loops"]):
@@ -136,14 +162,14 @@ def learning_to_split(config: dict,
                                                               random_split) 
 
         # Get the data modules now 
-        datamodule, _ = get_data_modules(spectra_mol_pairs, train_indices, test_indices, paired_featurizer)
+        datamodule = get_data_modules(spectra_mol_pairs, train_indices, test_indices, paired_featurizer)
 
         # Get trainer and logger
         monitor = config["callbacks"]["val_monitor"]
         checkpoint_callback = ModelCheckpoint(monitor=monitor,
                                               dirpath = results_dir,
-                                              filename = '{epoch:03d}-{val_bce_loss:.5f}', # Hack 
-                                              save_top_k = 2, mode = "min")
+                                              filename = 'best_predictor', # Hack 
+                                              save_top_k = 1, mode = "min")
         earlystop_callback = EarlyStopping(monitor=monitor, patience=config["callbacks"]["patience"])
         trainer = pl.Trainer(**config["trainer"], logger = wandb_logger, callbacks=[checkpoint_callback, earlystop_callback])
 
@@ -156,8 +182,9 @@ def learning_to_split(config: dict,
         gap = test_loss - val_loss
 
         # Add to wandb 
-        wandb_logger.log_metrics({"predictor/val_loss_epoch": val_loss})
-        wandb_logger.log_metrics({"predictor/test_loss_epoch": test_loss})
+        wandb_logger.log_metrics({"predictor/val_loss_epoch": val_loss}, step = outer_loop)
+        wandb_logger.log_metrics({"predictor/test_loss_epoch": test_loss}, step = outer_loop)
+        wandb_logger.log_metrics({"predictor/gap_epoch": gap}, step = outer_loop)
 
         if gap > best_gap:
             
@@ -180,11 +207,18 @@ def learning_to_split(config: dict,
         else: num_no_improvements += 1
         if num_no_improvements == config["splitter"]["patience"]: break
 
+        # Add predictor to the splitter 
+        splitter.add_predictor(predictor)
+
+        # Get the splitter datamodule 
+        splitter_datamodule = get_data_modules_splitter(spectra_mol_pairs, test_indices, paired_featurizer)
+
         # Train the splitter
-        train_splitter(splitter, predictor, dataset, test_indices, opt, wandb_logger,
-                        config["splitter"]["batch_size"], config["splitter"]["num_batches"], config["train_settings"]["num_workers"],
-                        config, verbose = verbose)
-    
+        splitter_monitor = config["splitter"]["monitor"]
+        splitter_earlystop_callback = EarlyStopping(monitor=splitter_monitor, patience=config["splitter"]["patience"])
+        splitter_trainer = pl.Trainer(**config["splitter_trainer"], logger = wandb_logger, callbacks=[splitter_earlystop_callback])
+        splitter_trainer.fit(splitter, datamodule = splitter_datamodule)
+        
     # Done! Print the best split.
     if verbose:
         print("Finished!\nBest split:")
@@ -210,7 +244,5 @@ if __name__ == "__main__":
     config = update_config(args, config)
 
     # Set seed
-    set_seed(config["seed"])
-
     # Run learning to split now 
     learning_to_split(config)

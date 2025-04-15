@@ -1,3 +1,3 @@
-from .MS_binned_model import MSBinnedModel, MSBinnedModelNN
-from .MS_transformer import MSTransformerEncoder, MSTransformerEncoderNN
-from .formula_transformer import FormulaTransformerEncoder, FormulaTransformerEncoderNN
+from .MS_binned_model import MSBinnedModel, MSBinnedModelSplitter
+from .MS_transformer import MSTransformerEncoder, MSTransformerEncoderSplitter
+from .formula_transformer import FormulaTransformerEncoder, FormulaTransformerEncoderSplitter
