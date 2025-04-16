@@ -192,7 +192,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Manually add in (hack)
-    folder = "./models_cached/"
+    folder = "./trained_models/"
     all_folders = []
     
     for FP in os.listdir(folder):

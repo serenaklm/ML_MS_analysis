@@ -1,11 +1,10 @@
 project: LS
 seed: 17
-device: 1
 
 dataset:
   fp_names: ["morgan4096"]
   data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_BM/mist/"
-  dataset: "canopus"
+  dataset: "nist2023"
   split_filename: "inchikey_vanilla.tsv"
   cache_featurizers: True
   spec_features: "peakformula"
@@ -61,7 +60,8 @@ splitter:
   train_ratio: 0.8
   clip_grad_norm: 0
   monitor: "splitter/loss" # Placeholder for now 
-  
+  every_n_epochs: 10
+
 splitter_trainer:
   max_epochs: 25
   devices: 2

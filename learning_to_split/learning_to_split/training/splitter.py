@@ -115,11 +115,6 @@ def compute_y_given_z_loss(mask, FP, no_grad = False, eps = 1e-6):
     p_given_test = torch.stack(p_given_test).squeeze(-1)
     p_original = torch.stack(p_original).squeeze(-1) 
 
-    # Compute the loss only for indices that are more than 0.0 
-    p_given_train = p_given_train[p_original > 0]
-    p_given_test = p_given_test[p_original > 0]
-    p_original = p_original[p_original > 0]
-
     loss_p_train_marginal = F.kl_div(torch.log(p_given_train), p_original, reduction = 'batchmean')
     loss_p_test_marginal = F.kl_div(torch.log(p_given_test), p_original, reduction = 'batchmean')
     loss_p_marginal = 1/2 * (loss_p_train_marginal + loss_p_test_marginal)

@@ -1,5 +1,5 @@
-project: FP_baselines_w_meta
-seed: 37
+project: FP_baselines_w_meta_emb
+seed: 17 #37
 
 data:
   dataset: "nist2023"
@@ -23,23 +23,23 @@ model:
 
   feats_params: 
     include_adduct: True 
-    include_CE: True
+    include_CE: False
     include_instrument: True 
 
   train_params:
     lr: 0.00075
-    weight_decay: 0.00005
+    weight_decay: 0.0000001
     pos_weight: 5.0
-    reconstruction_weight: 0
+    reconstruction_weight: 0.001
 
   binned_MS_encoder:
     model_dim: 512
     hidden_dim: 2048
     dropout_rate: 0.30
-
+      
   MS_encoder:
     n_heads: 8
-    n_layers: 8
+    n_layers: 6
     model_dim: 512
     hidden_dim: 2048
     dropout_rate: 0.30

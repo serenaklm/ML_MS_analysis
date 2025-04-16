@@ -36,7 +36,7 @@ def update_config(args, config):
     if devices > 1:
         config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
         config.setdefault("splitter_trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
-        
+
     if args.disable_checkpoint:
         config["trainer"]["enable_checkpointing"] = False
 
@@ -275,6 +275,11 @@ def learning_to_split(config: dict,
         test_loss = trainer.test(model = predictor, dataloaders = predictor_datamodule)[0]["test_FP_loss"]
 
         gap = test_loss - val_loss
+        
+        # Add to wandb 
+        wandb_logger.log_metrics({"predictor/val_loss_epoch": val_loss}, step = outer_loop)
+        wandb_logger.log_metrics({"predictor/test_loss_epoch": test_loss}, step = outer_loop)
+        wandb_logger.log_metrics({"predictor/gap_epoch": gap}, step = outer_loop)
 
         if gap > best_gap:
             

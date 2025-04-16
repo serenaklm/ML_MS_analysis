@@ -309,7 +309,7 @@ class MistNet(pl.LightningModule):
         fp_loss, magma_loss, iterative_loss = None, None, None
 
         # Get FP Loss
-        print(pred_fp)
+        print("Predicted FP", pred_fp)
         fp_loss_full = self.loss_fn(pred_fp, target_fp)
         fp_loss = fp_loss_full.mean(-1)
         pred_frag_fps = aux_outputs_spec.get("pred_frag_fps", None)
@@ -654,11 +654,11 @@ class MistNetSplitter(pl.LightningModule):
 
     def add_predictor(self, predictor):
         self.predictor = predictor
-        self.predictor.eval()
 
     @torch.no_grad()
     def _get_FP(self, batch):
-
+        
+        self.predictor.eval()
         FP_pred, _ = self.predictor.encode_spectra(batch)
         return FP_pred
 
@@ -720,3 +720,77 @@ class MistNetSplitter(pl.LightningModule):
                 },
             }
             return ret
+
+class MistNetNN(nn.Module):
+
+    def __init__(self,
+                 magma_aux_loss: bool = False,
+                 form_embedder: str = "float",
+                 magma_loss_lambda: int = 0,
+                 iterative_preds: str = "none",
+                 iterative_loss_weight: float = 0.0,
+                 shuffle_train: bool = False,
+                 fp_names: List[str] = ["morgan2048"],
+                 binarization_thresh: float = 0.5,
+                 loss_fn: str = "bce",
+                 pos_weight: int = 5, 
+
+                  hidden_size: int = 128,
+                  peak_attn_layers: int = 2,
+                  set_pooling: str = "inten",
+                  spectra_dropout: float = 0.1,
+                  num_heads: int = 8,
+                  pairwise_featurization: bool = True,
+                  embed_instrument: bool = False,
+                  no_diffs: bool = False,
+
+                  refine_layers: int = 4,
+                  magma_modulo: int = 512):
+
+        super().__init__()
+
+        self.predict_frag_fps = magma_aux_loss
+        self.form_embedder = form_embedder
+        self.magma_loss_lambda = magma_loss_lambda
+
+        self.iterative_preds = iterative_preds
+        self.output_size = featurizers.FingerprintFeaturizer.get_fingerprint_size(fp_names)
+
+        # Bit thresh
+        self.thresh = binarization_thresh
+
+        # BCE loss
+        self.bce_loss = partial(BCE_loss, pos_weight = pos_weight)
+        self.loss_name = loss_fn
+        self.cosine_loss = cosine_loss
+
+        if self.loss_name == "bce":
+            self.loss_fn = self.bce_loss
+        elif self.loss_name == "mse":
+            mse_loss = nn.MSELoss(reduction="none")
+            self.loss_fn = mse_loss
+        elif self.loss_name == "cosine":
+            self.loss_fn = self.cosine_loss
+        else:
+            raise NotImplementedError()
+
+        self.spectra_encoder = self._build_model(hidden_size = hidden_size, 
+                                                 peak_attn_layers = peak_attn_layers,
+                                                 set_pooling = set_pooling,
+                                                 spectra_dropout = spectra_dropout, 
+                                                 pairwise_featurization = pairwise_featurization,
+                                                 num_heads = num_heads,
+                                                 embed_instrument = embed_instrument,
+                                                 no_diffs = no_diffs,
+                                                 refine_layers = refine_layers,
+                                                 magma_modulo=magma_modulo)
+
+        # Useful for shuffle_train
+        rand_perm = torch.randperm(self.output_size).long()
+        inv_perm = torch.argsort(rand_perm)
+
+        self.rand_ordering = nn.Parameter(rand_perm, requires_grad=False)
+        self.inv_ordering = nn.Parameter(inv_perm, requires_grad=False)
+
+
+

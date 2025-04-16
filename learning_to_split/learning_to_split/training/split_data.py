@@ -12,7 +12,6 @@ def split_data(data: Dataset = None,
                train_ratio: float = 0.0, 
                batch_size: int = 0, 
                num_workers: int = 0, 
-               device: any = None,
                random_split = False):
     
     splitter.eval()

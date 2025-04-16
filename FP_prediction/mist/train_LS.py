@@ -43,10 +43,6 @@ def update_config(args, config):
     config["dataset"]["magma_folder"] = os.path.join(data_folder, dataset, "magma_outputs", "magma_tsv")
     config["dataset"]["split_file"] = os.path.join(data_folder, dataset, "splits", config["dataset"]["split_filename"])
 
-    # Add the device 
-    device_id = config["device"]
-    config["device"] = torch.device(f"cuda:{device_id}")
-
     return config
 
 @rank_zero_only
@@ -158,7 +154,6 @@ def learning_to_split(config: dict,
                                                               config["splitter"]["train_ratio"], 
                                                               config["train_settings"]["batch_size"], 
                                                               config["train_settings"]["num_workers"], 
-                                                              config["device"],
                                                               random_split) 
 
         # Get the data modules now 
@@ -204,6 +199,9 @@ def learning_to_split(config: dict,
             split_stats["best_gap"] = best_gap
             write_json(split_stats, os.path.join(results_dir, "splits_stats.json"))
 
+            # Save the state dict of the splitter 
+            torch.save(splitter.state_dict(), os.path.join(results_dir, "best_splitter.pth"))
+ 
         else: num_no_improvements += 1
         if num_no_improvements == config["splitter"]["patience"]: break
 
@@ -215,10 +213,14 @@ def learning_to_split(config: dict,
 
         # Train the splitter
         splitter_monitor = config["splitter"]["monitor"]
+        splitter_checkpoint_callback = ModelCheckpoint(monitor = splitter_monitor,
+                                                       dirpath = results_dir,
+                                                       filename = 'latest_splitter',
+                                                       every_n_epochs = config["splitter"]["every_n_epochs"])
         splitter_earlystop_callback = EarlyStopping(monitor=splitter_monitor, patience=config["splitter"]["patience"])
-        splitter_trainer = pl.Trainer(**config["splitter_trainer"], logger = wandb_logger, callbacks=[splitter_earlystop_callback])
+        splitter_trainer = pl.Trainer(**config["splitter_trainer"], logger = wandb_logger, callbacks=[splitter_checkpoint_callback, splitter_earlystop_callback])
         splitter_trainer.fit(splitter, datamodule = splitter_datamodule)
-        
+
     # Done! Print the best split.
     if verbose:
         print("Finished!\nBest split:")
@@ -243,6 +245,5 @@ if __name__ == "__main__":
     config = read_config(os.path.join(args.config_dir, args.config_file))
     config = update_config(args, config)
 
-    # Set seed
     # Run learning to split now 
     learning_to_split(config)

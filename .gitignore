@@ -1,4 +1,5 @@
 **/models_cached/*
+**/trained_models/*
 **/cached_results/*
 **/results/*
 **/ls_results/*
@@ -6,3 +7,4 @@
 **/wandb/*
 **/DreaMS/*
 **/pretrained_models/*
+**/best_models/*

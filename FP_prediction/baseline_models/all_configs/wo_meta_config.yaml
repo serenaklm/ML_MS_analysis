@@ -1,11 +1,11 @@
 project: FP_baselines
-seed: 17
+seed: 37
 
 data:
-  dataset: "nist2023"
+  dataset: "massspecgym"
   data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data/"
   splits_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_splits/"
-  split_file: "random.json"
+  split_file: "scaffold_vanilla.json"
   batch_size: 1024
   num_workers: 4
   bin_resolution: 0.25

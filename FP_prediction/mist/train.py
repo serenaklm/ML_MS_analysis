@@ -1,6 +1,7 @@
 import os
 import copy
 import yaml
+import random
 import logging
 import argparse
 from datetime import datetime
@@ -13,8 +14,8 @@ from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
-from utils import read_config
 from mist.data import datasets, splitter, featurizers
+from utils import read_config, consolidate_sampling_probability_IF, load_pickle, pickle_data
 
 # Refine the mist model in our own directory 
 from model import mist_model
@@ -61,11 +62,71 @@ def update_config(args, config):
     config["dataset"]["split_file"] = os.path.join(data_folder, dataset, "splits", config["dataset"]["split_filename"])
 
     return config
+
+def get_train_samples_to_remove(config):
+
+    meta = ""
+    if config["args"]["config_file"] == "wo_meta_config.yaml": meta = "wo_meta"
+    elif config["args"]["config_file"] == "w_meta_config.yaml": meta = "w_meta"
+    else: raise NotImplementedError() 
+
+    dataset_name = config["dataset"]["dataset"]
+    dataset_code = ""
+    if dataset_name == "canopus": dataset_code = "C"
+    if dataset_name == "massspecgym": dataset_code = "MSG"
+    if dataset_name == "nist2023": dataset_code = "NIST2023"
+
+    split_name = config["dataset"]["split_filename"].replace(".tsv", "")
+
+    if meta == "w_meta":
+        folder = os.path.join("./best_models/", dataset_name, f"{dataset_code}_MIST_meta_4096_{split_name}")
+    elif meta == "wo_meta":
+        folder = os.path.join("./best_models/", dataset_name, f"{dataset_code}_MIST_4096_{split_name}")
+
+    # Get the sampling prob 
+    train_sample_prob = os.path.join(folder, "harmful_score.pkl")
+    if not os.path.exists(train_sample_prob):
+        
+        print("Need to generate the sampling probability now")
+        harmful_score_dict = consolidate_sampling_probability_IF(folder)
+        pickle_data(harmful_score_dict, train_sample_prob)
+
+    # Check if we are removing random samples or based on IF 
+    random_check = config["args"]["random"] 
+
+    # Sample train records to remove 
+    ratio = config["args"]["sampling_ratio"]
+    harmful_score_dict = load_pickle(train_sample_prob)
+    n_train_to_remove = int(ratio * len(harmful_score_dict))
+
+    if random_check: 
+        harmful_ids = list(harmful_score_dict.keys())
+        harmful_ids = random.sample(harmful_ids, n_train_to_remove)
+
+    else: 
+        harmful_ids = dict(sorted(harmful_score_dict.items(), key=lambda item: item[1])[-n_train_to_remove:])
+        harmful_ids = list(harmful_ids.keys())
     
+    harmful_ids = [k.replace(".ms", "") for k in harmful_ids]
+
+    return harmful_ids
+
 def get_datamodule(config):
 
     # Split data
     my_splitter = splitter.get_splitter(**config["dataset"])
+
+    # Check if we are going to sample the dataset 
+    sampling_ratio = config["args"]["sampling_ratio"]
+
+    if sampling_ratio != 0.0: 
+        print("Sampling training data to discard now")
+        if config["args"]["random"]:
+            print("Random sampling now")
+        assert sampling_ratio > 0.0 and sampling_ratio < 1.0 
+
+        # Get the harmful samples
+        harmful_ids = get_train_samples_to_remove(config)
 
     # Get model class
     model_class = mist_model.MistNet
@@ -80,6 +141,13 @@ def get_datamodule(config):
 
     # Redefine splitter s.t. this splits three times and remove subsetting
     split_name, (train, val, test) = my_splitter.get_splits(spectra_mol_pairs)
+
+    # Sample it now 
+    print("len of train = ", len(train))
+
+    if sampling_ratio != 0.0:
+        train = [p for p in train if p[0].spectra_name not in harmful_ids]
+    print("len of train = ", len(train))
 
     for name, _data in zip(["train", "val", "test"], [train, val, test]):
         logging.info(f"Split: {split_name}, Len of {name}: {len(_data)}")
@@ -96,8 +164,37 @@ def get_datamodule(config):
     spec_dataloader_module = datasets.SpecDataModule(
         train_dataset, val_dataset, test_dataset, **config["train_settings"]
     ) # Note: this is already a pytorch lightning data module 
-
+    
     return spec_dataloader_module
+
+def get_exp_name(config):
+
+    dataset_code = ""
+
+    if "canopus" in config["dataset"]["dataset"]: dataset_code = "C"
+    elif "massspecgym" in config["dataset"]["dataset"]: dataset_code = "MSG"
+    elif "nist2023" in config["dataset"]["dataset"]: dataset_code = "NIST2023"
+    else: raise Exception("Dataset not recognized - ", config["dataset"]["dataset"])
+
+    model_code = "MIST"
+    split_code = config["dataset"]["split_file"].split("/")[-1].replace(".tsv", "")
+
+    if "w_meta" in config["args"]["config_file"]:
+        name = f"{dataset_code}_{model_code}_meta_4096_{split_code}"
+    else: 
+        assert "wo_meta" in config["args"]["config_file"]
+        name = f"{dataset_code}_{model_code}_4096_{split_code}"
+
+    ratio = config["args"]["sampling_ratio"]
+    if ratio != 0.0:
+        ratio = int(ratio * 100)
+        name = f"{name}_{ratio}"
+    
+    random_check = config["args"]["random"] 
+    if random_check: 
+        name = f"{name}_random"
+
+    return name 
 
 def train(config):
 
@@ -106,7 +203,7 @@ def train(config):
 
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"], "mist")
-    expt_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    expt_name = get_exp_name(config)
 
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
@@ -157,12 +254,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_dir", type = str, default = "./all_configs", help = "Config directory")
-    parser.add_argument("--config_file", type = str, default = "wo_aux_config.yaml", help = "Config file")
+    parser.add_argument("--config_file", type = str, default = "wo_meta_config.yaml", help = "Config file")
     parser.add_argument("--torch_hub_cache", type = str, default = "./cache", help = "Torch hub cache directory")
     parser.add_argument("--results_dir", type = str, default = "./results", help = "Results output directory")
     parser.add_argument("--debug", action = "store_true", default = False, help = "Set debug mode")
     parser.add_argument("--disable_checkpoint", action = "store_true", default = False, help = "Disable checkpointing")
     parser.add_argument("--wandb", action = "store_true", default = True, help = "Enable wandb logging")
+    parser.add_argument("--sampling_ratio", type = float, default = 0.0, help = "Remove top k most harmful samples from the training set")
+    parser.add_argument("--random", action = "store_true", default = False, help = "Randomly selecting samples to remove from the training set")
     parser.add_argument("--user", type = str, default = "serenakhoolm", help = "Set the user")
 
     args = parser.parse_args()
