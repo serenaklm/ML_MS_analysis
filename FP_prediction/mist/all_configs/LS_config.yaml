@@ -59,7 +59,7 @@ splitter:
   w_balance: 1.0
   train_ratio: 0.8
   clip_grad_norm: 0
-  monitor: "splitter/loss" # Placeholder for now 
+  monitor: "splitter/loss"
   every_n_epochs: 10
 
 splitter_trainer:

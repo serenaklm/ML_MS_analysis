@@ -1,5 +1,5 @@
 project: FP_baselines_w_meta_emb
-seed: 17 #37
+seed: 37
 
 data:
   dataset: "nist2023"
@@ -22,7 +22,7 @@ model:
   name: "formula_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
 
   feats_params: 
-    include_adduct: True 
+    include_adduct: True
     include_CE: False
     include_instrument: True 
 
@@ -39,7 +39,7 @@ model:
       
   MS_encoder:
     n_heads: 8
-    n_layers: 6
+    n_layers: 8
     model_dim: 512
     hidden_dim: 2048
     dropout_rate: 0.30

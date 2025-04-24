@@ -1,5 +1,7 @@
 import os
+import random
 from pathlib import Path
+from functools import partial
 from typing import Any, Dict, List, Optional, Union
 
 import torch 
@@ -10,6 +12,7 @@ from kronfluence.utils.dataset import DataLoaderKwargs
 from kronfluence.analyzer import Analyzer, prepare_model
 
 from modules import * 
+from mist.data.datasets import _collate_pairs
 from mist.data import datasets, splitter, featurizers
 from utils import read_config, load_pickle, pickle_data
 
@@ -85,7 +88,7 @@ class TaskMIST(Task):
 
         total_modules = []
 
-        # Input encoder 
+        # Intermediate layer
         total_modules.append(f"spectra_encoder.0.intermediate_layer.input_layer")
         total_modules.append(f"spectra_encoder.0.intermediate_layer.layers.0")
 
@@ -93,13 +96,19 @@ class TaskMIST(Task):
         total_modules.append(f"spectra_encoder.0.pairwise_featurizer.input_layer")
         total_modules.append(f"spectra_encoder.0.pairwise_featurizer.layers.0")
 
+        # # Peak atten layers 
+        # for i in range(2):
+        #     # total_modules.append(f"spectra_encoder.0.peak_attn_layers.{i}.self_attn.out_proj") # quantized
+        #     total_modules.append(f"spectra_encoder.0.peak_attn_layers.{i}.linear1")
+        #     total_modules.append(f"spectra_encoder.0.peak_attn_layers.{i}.linear2")
+
         # The predictors 
         total_modules.append(f"spectra_encoder.1.0")
         total_modules.append(f"spectra_encoder.2.initial_predict.0")
 
         for i in range(4):
-            total_modules.append(f"spectra_encoder.2.gate_bricks.{i}.0")
             total_modules.append(f"spectra_encoder.2.predict_bricks.{i}.0")
+            total_modules.append(f"spectra_encoder.2.gate_bricks.{i}.0")
 
         return total_modules
 
@@ -162,8 +171,13 @@ def get_datasets(folder, params, top_k):
     test_results_path = os.path.join(folder, "test_results.pkl")
     test_results = load_pickle(test_results_path)
     test_results = sorted(test_results.items(), key = lambda item: item[1]["loss"], reverse = True)
-    
-    test_ids_to_analyze = [str(r[0]).replace("tensor(", "").replace(")", "") for r in test_results[:top_k]] # Hack
+
+    # Look at 3 different types of test - the good test, the bad test and anything in the middle 
+    test_ids_to_analyze_bad_mistakes = [str(r[0]).replace("tensor(", "").replace(")", "") for r in test_results[:top_k]] # Hack
+    test_ids_to_analyze_good_predictions = [str(r[0]).replace("tensor(", "").replace(")", "") for r in test_results[-top_k:]] # Hack
+    test_ids_to_analyze_random = [str(r[0]).replace("tensor(", "").replace(")", "") for r in random.sample(test_results[top_k: len(test_results) - top_k], min(top_k, len(test_results) - 2 * top_k))]
+    test_ids_to_analyze = test_ids_to_analyze_bad_mistakes + test_ids_to_analyze_good_predictions + test_ids_to_analyze_random
+
     test = [r for r in test if r[0].spectra_name in test_ids_to_analyze]
 
     # Get the train ids 
@@ -181,9 +195,12 @@ def get_datasets(folder, params, top_k):
 
     print(f"Analyzing : {len(test)} test samples")
 
-    return train_dataset, test_dataset, train_files, test_files
+    return train_dataset, test_dataset, train_files, test_files, paired_featurizer
 
 def get_modules(model_cache_folder, params, top_k):
+
+    # Get the datasets
+    train_data, test_data, train_ids, test_ids, paired_featurizer = get_datasets(model_cache_folder, params, top_k)
 
     # Get the model 
     model = MistNet.load_from_checkpoint(get_checkpoint_path(model_cache_folder)).train()
@@ -191,26 +208,29 @@ def get_modules(model_cache_folder, params, top_k):
     # Get the task 
     task = TaskMIST()
 
-    # Get the datasets
-    train_data, test_data, train_ids, test_ids = get_datasets(model_cache_folder, params, top_k)
+    return model, task, train_data, test_data, train_ids, test_ids, paired_featurizer
 
-    return model, task, train_data, test_data, train_ids, test_ids
-
-def get_influence_scores(folder, output_path, top_k):
+def get_influence_scores(folder, output_path, self_output_path, top_k):
 
     # Get the parameters 
     params = read_config(folder / "run.yaml")
     params = update_params(params)
 
     # Get the model 
-    model, task, train_data, test_data, train_ids, test_ids = get_modules(folder, params, top_k)
+    model, task, train_data, test_data, train_ids, test_ids, paired_featurizer = get_modules(folder, params, top_k)
 
     # Get the modules to get the influence scores 
     model = prepare_model(model = model, task = task) 
     analyzer = Analyzer(analysis_name = f"{folder.stem}", model = model, task = task)
 
-    # [Optional] Set up the parameters for the DataLoader.
-    dataloader_kwargs = DataLoaderKwargs(num_workers=4, pin_memory=True)
+    # Set up the parameters for the DataLoader.
+    mol_collate_fn = paired_featurizer.get_mol_collate()
+    spec_collate_fn = paired_featurizer.get_spec_collate()
+    collate_pairs = partial(_collate_pairs,
+                            mol_collate_fn=mol_collate_fn,
+                            spec_collate_fn=spec_collate_fn)
+    
+    dataloader_kwargs = DataLoaderKwargs(num_workers=4, collate_fn=collate_pairs, pin_memory=True)
     analyzer.set_dataloader_kwargs(dataloader_kwargs)
 
     # Compute all factors
@@ -218,19 +238,29 @@ def get_influence_scores(folder, output_path, top_k):
 
     # Get the scores
     analyzer.compute_pairwise_scores(
-        scores_name="scores",
-        factors_name="EKFAC",
-        query_dataset=test_data,
-        train_dataset=train_data,
-        per_device_query_batch_size=16,
-        per_device_train_batch_size=128,
+        scores_name = "scores",
+        factors_name = "EKFAC",
+        query_dataset = test_data,
+        train_dataset = train_data,
+        per_device_query_batch_size = 32,
+        per_device_train_batch_size = 32
+    )
+
+    # Get the pairwise scores too
+    analyzer.compute_self_scores(
+        scores_name = "self_scores",
+        factors_name = "EKFAC",
+        train_dataset = train_data,
+        per_device_train_batch_size = 32
     )
 
     # Load the scores 
     scores = analyzer.load_pairwise_scores(scores_name = "scores")
+    self_scores = analyzer.load_self_scores(scores_name = "self_scores")
 
     # Save the scores
     pickle_data(scores, output_path)
+    pickle_data(self_scores, self_output_path)
 
     # Save the ids
     pickle_data(train_ids, folder / "train_ids.pkl")
@@ -241,22 +271,34 @@ if __name__ == "__main__":
     top_k = 1000
 
     # Manually add all folders to be processed into a list (hack)
-    folder = "./models_cached/"
+    # folder = "./best_models/canopus_w_sampling"
+    # all_folders = []
+    
+    # for dataset in os.listdir(folder):
+    #     dataset_folder = os.path.join(folder, dataset)
+    #     for checkpoint in os.listdir(dataset_folder):
+    #         all_folders.append(os.path.join(dataset_folder, checkpoint))
+
+    folder = "./best_models/"
     all_folders = []
     
-    for FP in os.listdir(folder):
-        FP_folder = os.path.join(folder, FP)
-        for dataset in os.listdir(FP_folder):
-            dataset_folder = os.path.join(FP_folder, dataset)
-            for checkpoint in os.listdir(dataset_folder):
-                all_folders.append(os.path.join(dataset_folder, checkpoint))
+    for dataset in os.listdir(folder):
+        if "w_sampling" in dataset: continue
+        if "canopus" not in dataset: continue
+        dataset_folder = os.path.join(folder, dataset)
+        for checkpoint in os.listdir(dataset_folder):
+            all_folders.append(os.path.join(dataset_folder, checkpoint))
 
     # Iterate through all folders to get influence scores for the models
     for f in all_folders:
 
         f = Path(f)
         output_path = f / "EK-FAC_scores.pkl"
-        if os.path.exists(output_path): print(f"{output_path} already exists. Continue.")
+        self_output_path = f / "EK-FAC_self_scores.pkl"
+        if os.path.exists(output_path): 
+            assert os.path.exists(self_output_path)
+            print(f"{output_path} already exists. Continue.")
+            continue 
 
         print(f"Getting the influence scores for: {f}")
-        get_influence_scores(f, output_path, top_k)
+        get_influence_scores(f, output_path, self_output_path, top_k)

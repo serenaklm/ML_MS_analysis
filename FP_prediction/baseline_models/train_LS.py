@@ -252,7 +252,6 @@ def learning_to_split(config: dict,
                                                               config["splitter"]["train_ratio"], 
                                                               config["data"]["batch_size"], 
                                                               config["data"]["num_workers"],
-                                                              config["device"],
                                                               random_split) 
 
         # Get trainer and logger
@@ -297,6 +296,9 @@ def learning_to_split(config: dict,
             split_stats["best_gap"] = best_gap
             write_json(split_stats, os.path.join(results_dir, "splits_stats.json"))
 
+            # Save the state dict of the splitter 
+            torch.save(splitter.state_dict(), os.path.join(results_dir, "best_splitter.pth"))
+ 
         else: num_no_improvements += 1
         if num_no_improvements == config["splitter"]["patience"]: break
 
@@ -306,8 +308,12 @@ def learning_to_split(config: dict,
         # Train the splitter
         splitter_datamodule = get_datamodule_splitter(MSDataset(**config["data"]), all_ids, test_indices)
         splitter_monitor = config["splitter"]["monitor"]
+        splitter_checkpoint_callback = ModelCheckpoint(monitor = splitter_monitor,
+                                                       dirpath = results_dir,
+                                                       filename = 'latest_splitter',
+                                                       every_n_epochs = config["splitter"]["every_n_epochs"])
         splitter_earlystop_callback = EarlyStopping(monitor=splitter_monitor, patience=config["splitter"]["patience"])
-        splitter_trainer = pl.Trainer(**config["splitter_trainer"], logger = wandb_logger, callbacks=[splitter_earlystop_callback])
+        splitter_trainer = pl.Trainer(**config["splitter_trainer"], logger = wandb_logger, callbacks=[splitter_earlystop_callback, splitter_checkpoint_callback])
         splitter_trainer.fit(splitter, datamodule = splitter_datamodule)
         
     # Done! Print the best split.

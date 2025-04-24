@@ -5,9 +5,12 @@ import wandb
 import random
 import argparse
 from typing import List
+from functools import partial
 from datetime import datetime
 
 import torch
+from torch.utils.data import DataLoader
+
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from lightning.pytorch.loggers import WandbLogger
@@ -19,6 +22,8 @@ from utils import read_config, pickle_data, write_json
 
 from model import mist_model
 from mist.data import datasets, featurizers
+from mist.data.datasets import _collate_pairs
+
 from learning_to_split import split_data
 
 def update_config(args, config):
@@ -92,7 +97,18 @@ def learning_to_split(config: dict,
     spectra_mol_pairs = list(zip(*spectra_mol_pairs))
     paired_featurizer = featurizers.get_paired_featurizer(**config["dataset"])
 
+    mol_collate_fn = paired_featurizer.get_mol_collate()
+    spec_collate_fn = paired_featurizer.get_spec_collate()
+    
+    collate_pairs = partial(_collate_pairs,
+                            mol_collate_fn=mol_collate_fn,
+                            spec_collate_fn=spec_collate_fn)
+
     dataset = Data(data = spectra_mol_pairs, train_mode = True, featurizer = paired_featurizer)
+    dataloader = DataLoader(dataset, batch_size = config["train_settings"]["batch_size"], 
+                                                  shuffle = False,
+                                                  num_workers=config["train_settings"]["num_workers"],
+                                                  collate_fn = collate_pairs)
 
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"])
@@ -101,6 +117,10 @@ def learning_to_split(config: dict,
     expt_name = f"MIST_{dataset_name}_{expt_name}"
     results_dir = os.path.join(results_dir, expt_name)
     create_results_dir(results_dir)
+
+    # Write the data ids for future analysis
+    data_ids = [p[0].spectra_name for p in spectra_mol_pairs]
+    pickle_data(data_ids, os.path.join(results_dir, "data_ids.pkl"))
     
     # Write the config here
     config_o = read_config(os.path.join(config["args"]["config_dir"], config["args"]["config_file"]))
@@ -150,10 +170,8 @@ def learning_to_split(config: dict,
 
         # Split the data 
         random_split = True if outer_loop == 0 else False
-        split_stats, train_indices, test_indices = split_data(dataset, splitter, 
+        split_stats, train_indices, test_indices = split_data(dataloader, splitter, 
                                                               config["splitter"]["train_ratio"], 
-                                                              config["train_settings"]["batch_size"], 
-                                                              config["train_settings"]["num_workers"], 
                                                               random_split) 
 
         # Get the data modules now 

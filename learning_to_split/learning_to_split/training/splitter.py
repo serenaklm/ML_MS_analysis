@@ -47,10 +47,13 @@ def cosine_dist(FP_pred: torch.Tensor, FP: torch.Tensor) -> torch.Tensor:
 
     return distance
 
-def compute_gap_loss(mask, FP_pred:torch.Tensor, FP: torch.Tensor, threshold: float = 0.5) -> torch.Tensor: 
+def compute_gap_loss(mask, FP_pred:torch.Tensor, FP: torch.Tensor, 
+                     threshold: float = 0.5,
+                     jaccard_threshold: float = 0.85) -> torch.Tensor: 
 
-    loss = jaccard_dist(FP_pred, FP, threshold)
-    score = torch.concat([loss[:, None], (1.0 - loss)[:, None]], dim = -1)
+    dist = jaccard_dist(FP_pred, FP, threshold)
+    quant = torch.quantile(dist, 0.8)
+    score = (dist <= min(jaccard_threshold, quant)).long() # 1: train, 0: test. 
 
     loss_gap = F.cross_entropy(mask, score) # Move the mistake to the test 
 
@@ -66,7 +69,10 @@ def compute_marginal_z_loss(mask, tar_ratio, no_grad = False):
         Goal: the predicted training size need to be tar_ratio * total_data_size
     '''
 
-    cur_ratio = torch.mean(mask)
+    mask = F.softmax(mask, dim = -1)
+    cur_ratio = torch.mean(mask[:, 1]) # Get the prob of train
+    print("curr ratio", cur_ratio)
+
     cur_z = torch.stack([1.0 - cur_ratio, cur_ratio])  # test_split, train_split
 
     tar_ratio = torch.ones_like(cur_ratio) * tar_ratio
@@ -88,7 +94,8 @@ def compute_y_given_z_loss(mask, FP, no_grad = False, eps = 1e-6):
       conditional marginal p(y | z = 1) need to match p(y | z = 0)
     '''
 
-    p_given_train, p_given_test, p_original = [],[], [] 
+    p_given_train, p_given_test, p_original = [],[], []
+    mask = F.softmax(mask, dim = -1)
     mask = mask[:, 1] # 1 is train 
 
     for p in range(FP.shape[1]):
@@ -129,7 +136,7 @@ def compute_y_given_z_loss(mask, FP, no_grad = False, eps = 1e-6):
 
 def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, wandb_logger, config):
 
-    stats = {k : [] for k in ["loss_ratio", "loss_balance", "loss_gap", "loss"]}
+    stats = {k : [] for k in ["loss_ratio", "loss_gap", "loss"]}
     
     FP_key = config["dataset"]["FP_key"]
     splitter = splitter.to(config["device"])
@@ -145,7 +152,7 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
         loss_ratio, _ = compute_marginal_z_loss(prob, config["splitter"]["train_ratio"])
 
         # Ensures p(y | z = 1) need to match p(y | z = 0)
-        loss_balance = compute_y_given_z_loss(prob, FP)
+        # loss_balance = compute_y_given_z_loss(prob, FP)
 
         # predictor's correctness as a loss 
         logit_test = splitter(batch_test, config["device"])
@@ -165,11 +172,11 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
 
         # Get the combined loss 
         w_ratio = config["splitter"]["w_ratio"]
-        w_balance = config["splitter"]["w_balance"]
+        # w_balance = config["splitter"]["w_balance"]
         w_gap = config["splitter"]["w_gap"]
-        w_sum = w_ratio + w_balance + w_gap 
+        w_sum = w_ratio + w_gap 
 
-        loss = (w_ratio * loss_ratio + w_balance * loss_balance + w_gap * loss_gap) / w_sum 
+        loss = (w_ratio * loss_ratio + w_gap * loss_gap) / w_sum 
 
         # Optimize
         optim_step(splitter, opt, loss, config)
@@ -177,25 +184,25 @@ def _train_splitter_single_epoch(splitter, predictor, loader, test_loader, opt, 
         # Add to wandb 
         step = opt["optim"].state[opt["optim"].param_groups[0]["params"][-1]]["step"]
         wandb_logger.log_metrics({"splitter/loss_ratio_step": loss_ratio.item()}, step = step)
-        wandb_logger.log_metrics({"splitter/loss_balance_step": loss_balance.item()}, step = step)
+        # wandb_logger.log_metrics({"splitter/loss_balance_step": loss_balance.item()}, step = step)
         wandb_logger.log_metrics({"splitter/loss_gap_step": loss_gap.item()}, step = step)
         wandb_logger.log_metrics({"splitter/loss_step": loss.item()}, step = step)
 
         # Update the stats
         stats["loss_ratio"].append(loss_ratio.item())
-        stats["loss_balance"].append(loss_balance.item())
+        # stats["loss_balance"].append(loss_balance.item())
         stats["loss_gap"].append(loss_gap.item())
         stats["loss"].append(loss.item())
 
         # Some printing
-        print(loss_ratio.item(), loss_balance.item(), loss_gap.item())
+        print(loss_ratio.item(), loss_gap.item())
 
     for k, v in stats.items():
         stats[k] = sum(v) / len(v)
 
     # Add to wandb 
     wandb_logger.log_metrics({"splitter/loss_ratio_epoch": stats["loss_ratio"]})
-    wandb_logger.log_metrics({"splitter/loss_balance_epoch": stats["loss_balance"]})
+    # wandb_logger.log_metrics({"splitter/loss_balance_epoch": stats["loss_balance"]})
     wandb_logger.log_metrics({"splitter/loss_gap_epoch": stats["loss_gap"]})
     wandb_logger.log_metrics({"splitter/loss_epoch": stats["loss"]})
 

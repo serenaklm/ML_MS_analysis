@@ -10,7 +10,6 @@ import torch
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
@@ -63,11 +62,12 @@ def update_config(args, config):
 
     return config
 
-def get_train_samples_to_remove(config):
+def sample_train(config):
 
     meta = ""
     if config["args"]["config_file"] == "wo_meta_config.yaml": meta = "wo_meta"
     elif config["args"]["config_file"] == "w_meta_config.yaml": meta = "w_meta"
+    elif config["args"]["config_file"] == "sieved_config.yaml": meta = ""
     else: raise NotImplementedError() 
 
     dataset_name = config["dataset"]["dataset"]
@@ -84,32 +84,33 @@ def get_train_samples_to_remove(config):
         folder = os.path.join("./best_models/", dataset_name, f"{dataset_code}_MIST_4096_{split_name}")
 
     # Get the sampling prob 
-    train_sample_prob = os.path.join(folder, "harmful_score.pkl")
-    if not os.path.exists(train_sample_prob):
+    train_sample_prob_path = os.path.join(folder, "influence_score.pkl")
+    if not os.path.exists(train_sample_prob_path):
         
         print("Need to generate the sampling probability now")
-        harmful_score_dict = consolidate_sampling_probability_IF(folder)
-        pickle_data(harmful_score_dict, train_sample_prob)
+        score_dict = consolidate_sampling_probability_IF(folder)
+        pickle_data(score_dict, train_sample_prob_path)
 
     # Check if we are removing random samples or based on IF 
     random_check = config["args"]["random"] 
 
-    # Sample train records to remove 
+    # Sample train records to add to the dataset
     ratio = config["args"]["sampling_ratio"]
-    harmful_score_dict = load_pickle(train_sample_prob)
-    n_train_to_remove = int(ratio * len(harmful_score_dict))
+    score_dict = load_pickle(train_sample_prob_path)
+    n_train_to_select = int(ratio * len(score_dict))
 
     if random_check: 
-        harmful_ids = list(harmful_score_dict.keys())
-        harmful_ids = random.sample(harmful_ids, n_train_to_remove)
+        selected_ids = list(score_dict.keys())
+        selected_ids = random.sample(selected_ids, n_train_to_select)
 
-    else: 
-        harmful_ids = dict(sorted(harmful_score_dict.items(), key=lambda item: item[1])[-n_train_to_remove:])
-        harmful_ids = list(harmful_ids.keys())
+    else:
+
+        score_dict = sorted(score_dict.items(), key=lambda item: item[1], reverse = True) # descending order   
+        selected_ids = [p[0] for p in score_dict[:n_train_to_select]] # Keep the top k 
     
-    harmful_ids = [k.replace(".ms", "") for k in harmful_ids]
+    selected_ids = [k.replace(".ms", "") for k in selected_ids]
 
-    return harmful_ids
+    return selected_ids
 
 def get_datamodule(config):
 
@@ -120,13 +121,13 @@ def get_datamodule(config):
     sampling_ratio = config["args"]["sampling_ratio"]
 
     if sampling_ratio != 0.0: 
-        print("Sampling training data to discard now")
+        print("Sampling training data now")
         if config["args"]["random"]:
             print("Random sampling now")
         assert sampling_ratio > 0.0 and sampling_ratio < 1.0 
 
-        # Get the harmful samples
-        harmful_ids = get_train_samples_to_remove(config)
+        # Get the samples to use for training
+        selected_ids = sample_train(config)
 
     # Get model class
     model_class = mist_model.MistNet
@@ -142,12 +143,9 @@ def get_datamodule(config):
     # Redefine splitter s.t. this splits three times and remove subsetting
     split_name, (train, val, test) = my_splitter.get_splits(spectra_mol_pairs)
 
-    # Sample it now 
-    print("len of train = ", len(train))
-
+    # Sample it now
     if sampling_ratio != 0.0:
-        train = [p for p in train if p[0].spectra_name not in harmful_ids]
-    print("len of train = ", len(train))
+        train = [p for p in train if p[0].spectra_name in selected_ids]
 
     for name, _data in zip(["train", "val", "test"], [train, val, test]):
         logging.info(f"Split: {split_name}, Len of {name}: {len(_data)}")
@@ -181,10 +179,14 @@ def get_exp_name(config):
 
     if "w_meta" in config["args"]["config_file"]:
         name = f"{dataset_code}_{model_code}_meta_4096_{split_code}"
-    else: 
-        assert "wo_meta" in config["args"]["config_file"]
+    elif "wo_meta" in config["args"]["config_file"]: 
         name = f"{dataset_code}_{model_code}_4096_{split_code}"
 
+    elif "sieved" in config["args"]["config_file"]: 
+        name = f"{dataset_code}_{model_code}_sieved_4096_{split_code}"
+    else:
+        raise NotImplementedError() 
+    
     ratio = config["args"]["sampling_ratio"]
     if ratio != 0.0:
         ratio = int(ratio * 100)
@@ -254,7 +256,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_dir", type = str, default = "./all_configs", help = "Config directory")
-    parser.add_argument("--config_file", type = str, default = "wo_meta_config.yaml", help = "Config file")
+    parser.add_argument("--config_file", type = str, default = "sieved_config.yaml", help = "Config file")
     parser.add_argument("--torch_hub_cache", type = str, default = "./cache", help = "Torch hub cache directory")
     parser.add_argument("--results_dir", type = str, default = "./results", help = "Results output directory")
     parser.add_argument("--debug", action = "store_true", default = False, help = "Set debug mode")

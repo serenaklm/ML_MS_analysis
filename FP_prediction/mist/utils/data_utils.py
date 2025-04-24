@@ -32,10 +32,10 @@ def consolidate_sampling_probability_IF(folder):
     scores = load_pickle(os.path.join(folder, "EK-FAC_scores.pkl"))["all_modules"]
     train_ids = load_pickle(os.path.join(folder, "train_ids.pkl"))
 
-    # Get a consolidated harmful score 
-    harmful_score = (scores < 0).float().mean(dim = 0).detach().cpu().numpy().tolist()
-
+    # Get influence score (simple percentage summation)
+    influence_score = (scores > 0).float().mean(0).detach().cpu().numpy().tolist()
+    
     # Format as a dictionary
-    harmful_score_dict = {train_ids[i]: harmful_score[i] for i in range(len(harmful_score))}
+    score_dict = {train_ids[i]: influence_score[i] for i in range(len(influence_score))}
 
-    return harmful_score_dict
+    return score_dict

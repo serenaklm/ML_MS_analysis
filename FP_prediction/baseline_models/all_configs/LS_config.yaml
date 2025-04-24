@@ -3,7 +3,7 @@ seed: 17
 device: 1
 
 data:
-  dataset: "canopus"
+  dataset: "massspecgym"
   data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data/"
   splits_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_splits/"
   split_file: "inchikey_vanilla.json" # Could just use any placeholder
@@ -32,20 +32,20 @@ model:
 
   feats_params: 
     include_adduct: True 
-    include_CE: True
+    include_CE: False
     include_instrument: True 
 
   binned_MS_encoder:
     model_dim: 512
     hidden_dim: 2048
-    dropout_rate: 0.30
+    dropout_rate: 0.10
 
   MS_encoder:
     n_heads: 8
     n_layers: 8
     model_dim: 512
     hidden_dim: 2048
-    dropout_rate: 0.30
+    dropout_rate: 0.10
 
 splitter:
   patience: 20
