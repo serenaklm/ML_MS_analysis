@@ -283,8 +283,7 @@ if __name__ == "__main__":
     all_folders = []
     
     for dataset in os.listdir(folder):
-        if "w_sampling" in dataset: continue
-        if "canopus" not in dataset: continue
+        if "sieved" not in dataset: continue
         dataset_folder = os.path.join(folder, dataset)
         for checkpoint in os.listdir(dataset_folder):
             all_folders.append(os.path.join(dataset_folder, checkpoint))

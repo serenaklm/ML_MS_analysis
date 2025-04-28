@@ -192,7 +192,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Manually add in (hack)
-    folder = "./best_models/nist2023_sieved"
+    folder = "./best_models/massspecgym_sieved"
     all_folders = []
     
     # for FP in os.listdir(folder):

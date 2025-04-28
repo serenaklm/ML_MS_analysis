@@ -19,6 +19,8 @@ from utils import read_config, consolidate_sampling_probability_IF, load_pickle,
 # Refine the mist model in our own directory 
 from model import mist_model
 
+os.environ["WANDB_API_KEY"] = "d72d59862e6a3d35823879bd4078f5199bc26639"
+
 @rank_zero_only
 def create_results_dir(results_dir):
     if not os.path.exists(results_dir): os.makedirs(results_dir)

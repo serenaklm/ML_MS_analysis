@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     RESULTS_FOLDER = []
 
-    for folder in [mist_folder, baseline_models_folder]:
+    for folder in [mist_folder]:
         for dataset in os.listdir(folder):
             for checkpoint in os.listdir(os.path.join(folder, dataset)):
                 RESULTS_FOLDER.append(os.path.join(folder, dataset, checkpoint))

@@ -210,9 +210,12 @@ def train(config):
     else:
         raise Exception(f"{model_name} not supported.")
     
-    # Train     
+    # Train
     wandb_logger.watch(model)
-    trainer.fit(model, datamodule = dataset)
+    if config["checkpoint"] is not None: 
+        trainer.fit(model, datamodule = dataset, ckpt_path = config["checkpoint"])
+    else:
+        trainer.fit(model, datamodule = dataset)
 
 if __name__ == "__main__":
 
