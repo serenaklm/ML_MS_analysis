@@ -1,10 +1,9 @@
 import os
 import yaml
 import copy
-import wandb
 import random
 import argparse
-from typing import List
+import pandas as pd
 from functools import partial
 from datetime import datetime
 
@@ -25,6 +24,8 @@ from mist.data import datasets, featurizers
 from mist.data.datasets import _collate_pairs
 
 from learning_to_split import split_data
+
+os.environ["WANDB_API_KEY"] = "d72d59862e6a3d35823879bd4078f5199bc26639"
 
 def update_config(args, config):
 
@@ -95,6 +96,14 @@ def learning_to_split(config: dict,
     # Get the dataset
     spectra_mol_pairs = datasets.get_paired_spectra(**config["dataset"])
     spectra_mol_pairs = list(zip(*spectra_mol_pairs))
+
+    # Get the permitted Ids 
+    id_list = pd.read_csv(config["dataset"]["split_file"], sep = "\t").loc[:, "name"].values.tolist()
+    id_list = [str(i) for i in id_list]
+
+    # filter out IDs that are not found in the list 
+    spectra_mol_pairs = [p for p in spectra_mol_pairs if str(p[0].spectra_name) in id_list]
+ 
     paired_featurizer = featurizers.get_paired_featurizer(**config["dataset"])
 
     mol_collate_fn = paired_featurizer.get_mol_collate()
@@ -243,7 +252,7 @@ def learning_to_split(config: dict,
     if verbose:
         print("Finished!\nBest split:")
         print(best_split["outer_loop"], best_split["split_stats"],
-                        best_split["val_score"], best_split["test_score"])
+                        best_split["val_loss"], best_split["test_loss"])
 
 if __name__ == "__main__":
 

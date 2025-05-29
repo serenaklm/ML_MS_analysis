@@ -242,8 +242,8 @@ def get_influence_scores(folder, output_path, self_output_path, top_k):
         factors_name = "EKFAC",
         query_dataset = test_data,
         train_dataset = train_data,
-        per_device_query_batch_size = 32,
-        per_device_train_batch_size = 32
+        per_device_query_batch_size = 128,
+        per_device_train_batch_size = 128
     )
 
     # Get the pairwise scores too
@@ -251,7 +251,7 @@ def get_influence_scores(folder, output_path, self_output_path, top_k):
         scores_name = "self_scores",
         factors_name = "EKFAC",
         train_dataset = train_data,
-        per_device_train_batch_size = 32
+        per_device_train_batch_size = 128
     )
 
     # Load the scores 
@@ -283,9 +283,11 @@ if __name__ == "__main__":
     all_folders = []
     
     for dataset in os.listdir(folder):
-        if "sieved" not in dataset: continue
         dataset_folder = os.path.join(folder, dataset)
         for checkpoint in os.listdir(dataset_folder):
+            if "sampled" in dataset_folder: continue
+            if "sieved" in checkpoint: continue
+            if "_LS" not in checkpoint: continue
             all_folders.append(os.path.join(dataset_folder, checkpoint))
 
     # Iterate through all folders to get influence scores for the models

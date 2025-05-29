@@ -228,13 +228,15 @@ class MSBinnedModelSplitter(pl.LightningModule):
                        input_dim: int = 100,
                        model_dim: int = 512,
                        hidden_dim: int = 2048,
+                       FP_dim: int = 4096,
                        dropout_rate: float = 0.2,
                        include_adduct: bool = False,
                        include_CE: bool = False, 
                        include_instrument: bool = False,
                        n_adducts: int = 10, 
                        n_CEs: int = 10,
-                       n_instruments: int = 10):
+                       n_instruments: int = 10,
+                       jaccard_threshold: float = 0.75):
 
         super().__init__()
 
@@ -265,6 +267,17 @@ class MSBinnedModelSplitter(pl.LightningModule):
                                         nn.Dropout(dropout_rate),
                                         nn.Linear(hidden_dim, 2))
 
+        # Get the FP encoder 
+        self.FP_encoder = nn.Sequential(nn.Linear(FP_dim, hidden_dim),
+                                       nn.GELU(),
+                                       nn.Linear(hidden_dim, model_dim),
+                                       nn.Dropout(dropout_rate))
+        
+        # Get the merger layer 
+        self.merge_layer = nn.Sequential(nn.Linear(model_dim * 2, hidden_dim),
+                                         nn.GELU(),
+                                         nn.Linear(hidden_dim, model_dim))
+        
         # Get embeddings for the adducts, CEs and instruments 
         if self.include_adduct: self.adduct_embs = nn.Embedding(n_adducts, model_dim)
         if self.include_CE: self.CE_embs = nn.Embedding(n_CEs, model_dim)
@@ -274,8 +287,9 @@ class MSBinnedModelSplitter(pl.LightningModule):
         self.w_gap = w_gap 
         self.w_ratio = w_ratio 
         self.w_balance = w_balance 
-        self.total = w_gap + w_ratio + w_balance
+        self.total = w_gap + w_ratio #+ w_balance
         self.tar_ratio = tar_ratio
+        self.jaccard_threshold = jaccard_threshold
         self.lr = lr
         self.weight_decay = weight_decay
 
@@ -286,13 +300,15 @@ class MSBinnedModelSplitter(pl.LightningModule):
     @torch.no_grad()
     def _get_FP(self, batch):
 
-        FP_pred, _ = self.predictor.encode_spectra(batch)
+        FP_pred = self.predictor.encode_spectra(batch)
+
         return FP_pred
 
     def encode_spectra(self, batch):
 
         # Unpack the batch 
         binned_ms = batch["binned_MS"]
+        FP = batch["FP"]
 
         adduct, CE, instrument = None, None, None
         if self.include_adduct: adduct = batch["adduct"]
@@ -304,6 +320,10 @@ class MSBinnedModelSplitter(pl.LightningModule):
         if self.include_CE: binned_ms = torch.concat([binned_ms, self.CE_embs(CE)], dim = -1)
         if self.include_instrument: binned_ms = torch.concat([binned_ms, self.instrument_embs(instrument)], dim = -1)
         emb = self.MLP(binned_ms)
+
+        # Add in the info of FP 
+        FP_emb = self.FP_encoder(FP)
+        emb = self.merge_layer(torch.concat([emb, FP_emb], dim = -1))
 
         pred = self.pred_layer(emb)
         
@@ -318,23 +338,23 @@ class MSBinnedModelSplitter(pl.LightningModule):
         
         # Get the gap loss 
         FP_pred = self._get_FP(batch)
-        gap_loss = compute_gap_loss(pred, FP_pred, FP)
+        gap_loss = compute_gap_loss(pred, FP_pred, FP, jaccard_threshold = self.jaccard_threshold)
 
         # Get the balance loss
-        balance_loss = compute_y_given_z_loss(pred, FP)
+        # balance_loss = compute_y_given_z_loss(pred, FP)
 
         # Get the ratio loss 
         ratio_loss, _ = compute_marginal_z_loss(pred, tar_ratio = self.tar_ratio)
 
         # Get the total loss 
-        loss = (self.w_gap * gap_loss + self.w_balance * balance_loss + self.w_ratio * ratio_loss) / self.total 
+        loss = (self.w_gap * gap_loss+ self.w_ratio * ratio_loss) / self.total 
 
         self.log("splitter/gap_loss", gap_loss, prog_bar = True, sync_dist = True, on_epoch = True)
-        self.log("splitter/balance_loss", balance_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        # self.log("splitter/balance_loss", balance_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("splitter/ratio_loss", ratio_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("splitter/loss", loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
-        return {"gap_loss": gap_loss, "balance_loss": balance_loss, "ratio_loss": ratio_loss, "loss": loss}
+        return {"gap_loss": gap_loss, "ratio_loss": ratio_loss, "loss": loss}
     
     def get_output(self, batch):
 

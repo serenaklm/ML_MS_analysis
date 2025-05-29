@@ -562,6 +562,7 @@ class MistNetSplitter(pl.LightningModule):
                  peak_attn_layers: int = 2,
                  set_pooling: str = "inten",
                  spectra_dropout: float = 0.1,
+                 FP_dim: int = 4096,
                  num_heads: int = 8,
                  pairwise_featurization: bool = True,
                  embed_instrument: bool = False,
@@ -584,7 +585,7 @@ class MistNetSplitter(pl.LightningModule):
         self.w_gap = w_gap
         self.w_ratio = w_ratio
         self.w_balance = w_balance
-        self.total = w_gap + w_ratio + w_balance
+        self.total = w_gap + w_ratio #+ w_balance
 
         self.thresh = binarization_thresh
 
@@ -594,6 +595,7 @@ class MistNetSplitter(pl.LightningModule):
                                                  spectra_dropout = spectra_dropout, 
                                                  pairwise_featurization = pairwise_featurization,
                                                  num_heads = num_heads,
+                                                 FP_dim = FP_dim,
                                                  embed_instrument = embed_instrument,
                                                  no_diffs = no_diffs)
 
@@ -611,6 +613,7 @@ class MistNetSplitter(pl.LightningModule):
         spectra_dropout: float = 0.0,
         pairwise_featurization: bool = True,
         num_heads: int = 8,
+        FP_dim: int = 4096,
         embed_instrument: bool = False,
         no_diffs: bool = True
     ):
@@ -635,10 +638,24 @@ class MistNetSplitter(pl.LightningModule):
         top_layer_parts.append(nn.ReLU())
         top_layer_parts.append(nn.Dropout(spectra_dropout))
 
+        FP_encoder_parts = []
+        FP_encoder_parts.append(nn.Linear(FP_dim, hidden_size))
+        FP_encoder_parts.append(nn.ReLU())
+        FP_encoder_parts.append(nn.Linear(hidden_size, hidden_size))
+        FP_encoder_parts.append(nn.Dropout(spectra_dropout))
+        FP_encoder = nn.Sequential(*FP_encoder_parts)
+
+        merge_layer = []
+        merge_layer.append(nn.Linear(hidden_size * 2, hidden_size))
+        merge_layer.append(nn.ReLU())
+        merge_layer.append(nn.Linear(hidden_size, hidden_size))
+        merge_layer.append(nn.Dropout(spectra_dropout))
+        merge_layer = nn.Sequential(*merge_layer)
+
         top_layer_parts.append(nn.Linear(hidden_size, 2))
         spectra_predictor = nn.Sequential(*top_layer_parts)
 
-        module_list = [spectra_encoder_main, spectra_predictor]
+        module_list = [spectra_encoder_main, FP_encoder, merge_layer, spectra_predictor]
         spectra_encoder = nn.ModuleList(module_list)
 
         return spectra_encoder
@@ -648,7 +665,9 @@ class MistNetSplitter(pl.LightningModule):
         """encode_spectra."""
 
         encoder_output, _ = self.spectra_encoder[0](batch, return_aux=True)
-        output = self.spectra_encoder[1](encoder_output)
+        FP_emb = self.spectra_encoder[1](batch["mols"].float())
+        encoder_output = self.spectra_encoder[2](torch.concat([encoder_output, FP_emb], dim = -1))
+        output = self.spectra_encoder[3](encoder_output)
 
         return output
 
@@ -673,20 +692,20 @@ class MistNetSplitter(pl.LightningModule):
         gap_loss = compute_gap_loss(pred, FP_pred, FP, threshold = self.thresh)
 
         # Get the balance loss
-        balance_loss = compute_y_given_z_loss(pred, FP)
+        # balance_loss = compute_y_given_z_loss(pred, FP)
 
         # Get the ratio loss 
         ratio_loss, _ = compute_marginal_z_loss(pred, tar_ratio = self.tar_ratio)
 
         # Get the total loss 
-        loss = (self.w_gap * gap_loss + self.w_balance * balance_loss + self.w_ratio * ratio_loss) / self.total 
+        loss = (self.w_gap * gap_loss + + self.w_ratio * ratio_loss) / self.total 
 
         self.log("splitter/gap_loss", gap_loss, prog_bar = True, sync_dist = True, on_epoch = True)
-        self.log("splitter/balance_loss", balance_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        # self.log("splitter/balance_loss", balance_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("splitter/ratio_loss", ratio_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("splitter/loss", loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
-        return {"gap_loss": gap_loss, "balance_loss": balance_loss, "ratio_loss": ratio_loss, "loss": loss}
+        return {"gap_loss": gap_loss, "ratio_loss": ratio_loss, "loss": loss}
 
     def get_output(self, batch):
         
@@ -720,77 +739,3 @@ class MistNetSplitter(pl.LightningModule):
                 },
             }
             return ret
-
-class MistNetNN(nn.Module):
-
-    def __init__(self,
-                 magma_aux_loss: bool = False,
-                 form_embedder: str = "float",
-                 magma_loss_lambda: int = 0,
-                 iterative_preds: str = "none",
-                 iterative_loss_weight: float = 0.0,
-                 shuffle_train: bool = False,
-                 fp_names: List[str] = ["morgan2048"],
-                 binarization_thresh: float = 0.5,
-                 loss_fn: str = "bce",
-                 pos_weight: int = 5, 
-
-                  hidden_size: int = 128,
-                  peak_attn_layers: int = 2,
-                  set_pooling: str = "inten",
-                  spectra_dropout: float = 0.1,
-                  num_heads: int = 8,
-                  pairwise_featurization: bool = True,
-                  embed_instrument: bool = False,
-                  no_diffs: bool = False,
-
-                  refine_layers: int = 4,
-                  magma_modulo: int = 512):
-
-        super().__init__()
-
-        self.predict_frag_fps = magma_aux_loss
-        self.form_embedder = form_embedder
-        self.magma_loss_lambda = magma_loss_lambda
-
-        self.iterative_preds = iterative_preds
-        self.output_size = featurizers.FingerprintFeaturizer.get_fingerprint_size(fp_names)
-
-        # Bit thresh
-        self.thresh = binarization_thresh
-
-        # BCE loss
-        self.bce_loss = partial(BCE_loss, pos_weight = pos_weight)
-        self.loss_name = loss_fn
-        self.cosine_loss = cosine_loss
-
-        if self.loss_name == "bce":
-            self.loss_fn = self.bce_loss
-        elif self.loss_name == "mse":
-            mse_loss = nn.MSELoss(reduction="none")
-            self.loss_fn = mse_loss
-        elif self.loss_name == "cosine":
-            self.loss_fn = self.cosine_loss
-        else:
-            raise NotImplementedError()
-
-        self.spectra_encoder = self._build_model(hidden_size = hidden_size, 
-                                                 peak_attn_layers = peak_attn_layers,
-                                                 set_pooling = set_pooling,
-                                                 spectra_dropout = spectra_dropout, 
-                                                 pairwise_featurization = pairwise_featurization,
-                                                 num_heads = num_heads,
-                                                 embed_instrument = embed_instrument,
-                                                 no_diffs = no_diffs,
-                                                 refine_layers = refine_layers,
-                                                 magma_modulo=magma_modulo)
-
-        # Useful for shuffle_train
-        rand_perm = torch.randperm(self.output_size).long()
-        inv_perm = torch.argsort(rand_perm)
-
-        self.rand_ordering = nn.Parameter(rand_perm, requires_grad=False)
-        self.inv_ordering = nn.Parameter(inv_perm, requires_grad=False)
-
-
-

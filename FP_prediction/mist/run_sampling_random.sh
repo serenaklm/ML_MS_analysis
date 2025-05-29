@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# ratios=(0.05 0.1 0.1)
+for ratio in 0.80 0.85;
 
-for ratio in 0.10 0.30 0.50 0.70 0.90;
 do
 
     echo "Training with sampling ratio = $ratio"

@@ -69,6 +69,7 @@ def sample_train(config):
     meta = ""
     if config["args"]["config_file"] == "wo_meta_config.yaml": meta = "wo_meta"
     elif config["args"]["config_file"] == "w_meta_config.yaml": meta = "w_meta"
+    elif config["args"]["config_file"] == "w_meta_config_2.yaml": meta = "w_meta"
     elif config["args"]["config_file"] == "sieved_config.yaml": meta = ""
     else: raise NotImplementedError() 
 
@@ -106,10 +107,15 @@ def sample_train(config):
         selected_ids = random.sample(selected_ids, n_train_to_select)
 
     else:
+        
+        strategy = config["args"]["strategy"]
+        ratio_int = int(ratio * 100)
 
-        score_dict = sorted(score_dict.items(), key=lambda item: item[1], reverse = True) # descending order   
-        selected_ids = [p[0] for p in score_dict[:n_train_to_select]] # Keep the top k 
-    
+        # Hardcode this for now 
+        folder = "/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_prediction/mist/best_models/massspecgym/MSG_MIST_meta_4096_scaffold_vanilla/sample_ids"
+        ids_path = os.path.join(folder, f"{strategy}_{ratio_int}.pkl")
+        selected_ids = load_pickle(ids_path)
+
     selected_ids = [k.replace(".ms", "") for k in selected_ids]
 
     return selected_ids
@@ -126,6 +132,7 @@ def get_datamodule(config):
         print("Sampling training data now")
         if config["args"]["random"]:
             print("Random sampling now")
+
         assert sampling_ratio > 0.0 and sampling_ratio < 1.0 
 
         # Get the samples to use for training
@@ -147,7 +154,9 @@ def get_datamodule(config):
 
     # Sample it now
     if sampling_ratio != 0.0:
+        print(f"Before: {len(train)}")
         train = [p for p in train if p[0].spectra_name in selected_ids]
+        print(f"After: {len(train)}")
 
     for name, _data in zip(["train", "val", "test"], [train, val, test]):
         logging.info(f"Split: {split_name}, Len of {name}: {len(_data)}")
@@ -193,10 +202,13 @@ def get_exp_name(config):
     if ratio != 0.0:
         ratio = int(ratio * 100)
         name = f"{name}_{ratio}"
-    
-    random_check = config["args"]["random"] 
-    if random_check: 
-        name = f"{name}_random"
+        
+        random_check = config["args"]["random"] 
+        if random_check: 
+            name = f"{name}_random"
+        else:
+            strategy = config["args"]["strategy"]
+            name = f"{name}_{strategy}"
 
     return name 
 
@@ -258,7 +270,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_dir", type = str, default = "./all_configs", help = "Config directory")
-    parser.add_argument("--config_file", type = str, default = "sieved_config.yaml", help = "Config file")
+    parser.add_argument("--config_file", type = str, default = "w_meta_config.yaml", help = "Config file")
     parser.add_argument("--torch_hub_cache", type = str, default = "./cache", help = "Torch hub cache directory")
     parser.add_argument("--results_dir", type = str, default = "./results", help = "Results output directory")
     parser.add_argument("--debug", action = "store_true", default = False, help = "Set debug mode")
@@ -266,9 +278,14 @@ if __name__ == "__main__":
     parser.add_argument("--wandb", action = "store_true", default = True, help = "Enable wandb logging")
     parser.add_argument("--sampling_ratio", type = float, default = 0.0, help = "Remove top k most harmful samples from the training set")
     parser.add_argument("--random", action = "store_true", default = False, help = "Randomly selecting samples to remove from the training set")
+    parser.add_argument("--strategy", type = str, default = "top_k_helpful", help = "Config file")
     parser.add_argument("--user", type = str, default = "serenakhoolm", help = "Set the user")
 
     args = parser.parse_args()
+
+    # Sanity check 
+    assert args.strategy in ["top_k_helpful", "remove_top_k_harmful", 
+                             "remove_top_k_self"]
 
     # Set torch hub cache
     torch.hub.set_dir(args.torch_hub_cache)

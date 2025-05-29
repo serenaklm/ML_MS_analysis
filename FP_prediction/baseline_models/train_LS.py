@@ -6,6 +6,8 @@ import argparse
 from datetime import datetime
 
 import torch
+from torch.utils.data import DataLoader
+
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from lightning.pytorch.loggers import WandbLogger
@@ -20,6 +22,8 @@ from modules import MSBinnedModelSplitter, MSTransformerEncoderSplitter, Formula
 
 from learning_to_split import split_data
 
+os.environ["WANDB_API_KEY"] = "d72d59862e6a3d35823879bd4078f5199bc26639"
+
 def update_config(args, config):
     
     config["args"] = args.__dict__
@@ -33,9 +37,8 @@ def update_config(args, config):
 
     config["trainer"]["val_check_interval"] = config["trainer"]["log_every_n_steps"] - 1
 
-    if devices > 1:
-        config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
-        config.setdefault("splitter_trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
+    # if devices > 1:
+    #     config.setdefault("trainer", {}).update(strategy = DDPStrategy(find_unused_parameters=True))
 
     if args.disable_checkpoint:
         config["trainer"]["enable_checkpointing"] = False
@@ -148,6 +151,7 @@ def get_splitter(config):
     splitter_model_params["w_gap"] = config["splitter"]["w_gap"]
     splitter_model_params["w_ratio"] = config["splitter"]["w_ratio"]
     splitter_model_params["w_balance"] = config["splitter"]["w_balance"]
+    splitter_model_params["jaccard_threshold"] = config["splitter"]["jaccard_threshold"]
 
     del splitter_model_params["pos_weight"]
     del splitter_model_params["reconstruction_weight"]
@@ -207,6 +211,10 @@ def learning_to_split(config: dict,
     datamodule = MSDataset(**config["data"])
     all_ids = datamodule.data
     dataset = Data(all_ids, datamodule.process)
+    dataloader = DataLoader(dataset,
+                            num_workers = config["data"]["num_workers"],
+                            batch_size = config["data"]["batch_size"],
+                            shuffle = False)
 
     # Update the results directory 
     results_dir = os.path.join(config["args"]["results_dir"])
@@ -235,11 +243,11 @@ def learning_to_split(config: dict,
 
     # Get the wandb logger 
     wandb_logger = WandbLogger(project = config["project"],
-                        config = config,
-                        group = config["args"]["config_file"].replace(".yaml", ""),
-                        entity = config["args"]["user"],
-                        name = expt_name,
-                        log_model = False)
+                               config = config,
+                               group = config["args"]["config_file"].replace(".yaml", ""),
+                               entity = config["args"]["user"],
+                               name = expt_name,
+                               log_model = False)
 
     # Start training here
     for outer_loop in range(config["train_params"]["n_outer_loops"]):
@@ -248,10 +256,8 @@ def learning_to_split(config: dict,
         
         # Split the data 
         random_split = True if outer_loop == 0 else False
-        split_stats, train_indices, test_indices = split_data(dataset, splitter, 
+        split_stats, train_indices, test_indices = split_data(dataloader, splitter, 
                                                               config["splitter"]["train_ratio"], 
-                                                              config["data"]["batch_size"], 
-                                                              config["data"]["num_workers"],
                                                               random_split) 
 
         # Get trainer and logger
@@ -312,16 +318,19 @@ def learning_to_split(config: dict,
                                                        dirpath = results_dir,
                                                        filename = 'latest_splitter',
                                                        every_n_epochs = config["splitter"]["every_n_epochs"])
-        splitter_earlystop_callback = EarlyStopping(monitor=splitter_monitor, patience=config["splitter"]["patience"])
-        splitter_trainer = pl.Trainer(**config["splitter_trainer"], logger = wandb_logger, callbacks=[splitter_earlystop_callback, splitter_checkpoint_callback])
+        splitter_earlystop_callback = EarlyStopping(monitor=splitter_monitor, patience=config["splitter"]["patience"])    
+        splitter_trainer = pl.Trainer(**config["splitter_trainer"], 
+                                      strategy = DDPStrategy(find_unused_parameters = True),
+                                      logger = wandb_logger, callbacks=[splitter_earlystop_callback, splitter_checkpoint_callback])
+
         splitter_trainer.fit(splitter, datamodule = splitter_datamodule)
-        
+
     # Done! Print the best split.
     if verbose:
         print("Finished!\nBest split:")
         print(best_split["outer_loop"], best_split["split_stats"],
-                        best_split["val_score"], best_split["test_score"])
-        
+                        best_split["val_loss"], best_split["test_loss"])
+   
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()

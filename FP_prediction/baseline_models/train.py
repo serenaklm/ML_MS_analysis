@@ -212,10 +212,10 @@ def train(config):
     
     # Train
     wandb_logger.watch(model)
-    if config["checkpoint"] is not None: 
-        trainer.fit(model, datamodule = dataset, ckpt_path = config["checkpoint"])
-    else:
-        trainer.fit(model, datamodule = dataset)
+    # if config["checkpoint"] is not None: 
+    #     trainer.fit(model, datamodule = dataset, ckpt_path = config["checkpoint"])
+    # else:
+    trainer.fit(model, datamodule = dataset)
 
 if __name__ == "__main__":
 

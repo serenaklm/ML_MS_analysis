@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn 
 import torch.nn.functional as F
 from kronfluence.task import Task
+from kronfluence.arguments import ScoreArguments
 from kronfluence.utils.dataset import DataLoaderKwargs
 from kronfluence.analyzer import Analyzer, prepare_model
 
@@ -358,16 +359,15 @@ def get_influence_scores(folder, output_path, self_output_path, top_k):
         factors_name="EKFAC",
         query_dataset=test_data,
         train_dataset=train_data,
-        per_device_query_batch_size = 128,
-        per_device_train_batch_size = 128
-    )
-
+        per_device_query_batch_size = 64,
+        per_device_train_batch_size = 64)
+    
     # Get the pairwise scores too
     analyzer.compute_self_scores(
         scores_name = "self_scores",
         factors_name = "EKFAC",
         train_dataset = train_data,
-        per_device_train_batch_size = 128
+        per_device_train_batch_size = 64
     )
 
     # Load the scores 
@@ -391,11 +391,9 @@ if __name__ == "__main__":
     all_folders = []
     
     for dataset in os.listdir(folder):
+        if dataset != "massspecgym_sieved": continue
         dataset_folder = os.path.join(folder, dataset)
         for checkpoint in os.listdir(dataset_folder):
-            if "NIST2023" not in checkpoint: continue 
-            if "scaffold_vanilla" not in checkpoint: continue 
-
             all_folders.append(os.path.join(dataset_folder, checkpoint))
 
     # Iterate through all folders to get influence scores for the models
@@ -404,7 +402,7 @@ if __name__ == "__main__":
         f = Path(f)
         output_path = f / "EK-FAC_scores.pkl"
         self_output_path = f / "EK-FAC_self_scores.pkl"
-        if os.path.exists(output_path): 
+        if os.path.exists(output_path) and os.path.exists(self_output_path): 
             print(f"{output_path} already exists. Continue.")
             continue
 

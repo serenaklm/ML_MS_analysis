@@ -1,6 +1,5 @@
 project: LS
 seed: 17
-device: 1
 
 data:
   dataset: "massspecgym"
@@ -24,11 +23,11 @@ train_params:
   weight_decay: 0.00005
   pos_weight: 5.0
   reconstruction_weight: 0
-  n_outer_loops: 500
   name: "Adam"
+  n_outer_loops: 500
 
 model:
-  name: "formula_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
+  name: "binned_MS_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
 
   feats_params: 
     include_adduct: True 
@@ -42,14 +41,13 @@ model:
 
   MS_encoder:
     n_heads: 8
-    n_layers: 8
+    n_layers: 6
     model_dim: 512
     hidden_dim: 2048
     dropout_rate: 0.10
 
 splitter:
   patience: 20
-  convergence_threshold: 0.003
   num_batches: 500
   w_gap: 1.0
   w_ratio: 1.0
@@ -57,16 +55,17 @@ splitter:
   train_ratio: 0.8
   clip_grad_norm: 0
   monitor: "splitter/loss"
-  
+  every_n_epochs: 10 
+  jaccard_threshold: 0.85
+
 splitter_trainer:
-  max_epochs: 25
-  devices: 2
+  max_epochs: 100
   limit_val_batches: 0
-  accelerator: "gpu"
   gradient_clip_val: 5 
+  devices: 2
 
 trainer:
-  max_epochs: 15 # So that we can still make some mistakes in the test?
+  max_epochs: 100 # So that we can still make some mistakes in the test?
   devices: 2
   accelerator: "gpu"
   log_every_n_steps: 5

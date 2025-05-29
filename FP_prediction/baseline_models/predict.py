@@ -236,22 +236,22 @@ if __name__ == "__main__":
                 
     #             all_folders.append(os.path.join(model_folder, checkpoint))
 
-    # # # Manually add in (hack)
-    # folder = "./best_models/"
-    # all_folders = []
-    
-    # for model in os.listdir(folder):
-    #     model_folder = os.path.join(folder, model)
-    #     for checkpoint in os.listdir(model_folder):
-    #         all_folders.append(os.path.join(model_folder, checkpoint))
-
-    # # Manually add in (hack)
-    folder = "./results/"
+    # Manually add in (hack)
+    folder = "./best_models/"
     all_folders = []
-
+    
     for model in os.listdir(folder):
-        for checkpoint in os.listdir(os.path.join(folder, model)):
-            all_folders.append(os.path.join(folder, model, checkpoint))
+        model_folder = os.path.join(folder, model)
+        for checkpoint in os.listdir(model_folder):
+            all_folders.append(os.path.join(model_folder, checkpoint))
+
+    # # # Manually add in (hack)
+    # folder = "./results/"
+    # all_folders = []
+
+    # for model in os.listdir(folder):
+    #     for checkpoint in os.listdir(os.path.join(folder, model)):
+    #         all_folders.append(os.path.join(folder, model, checkpoint))
 
     for f in all_folders:
 

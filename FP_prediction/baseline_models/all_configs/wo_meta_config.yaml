@@ -1,11 +1,11 @@
 project: FP_baselines
-seed: 176
+seed: 17
 
 data:
   dataset: "massspecgym"
   data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data/"
   splits_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_splits/"
-  split_file: "inchikey_vanilla.json"
+  split_file: "inchikey_vanilla_sieved.json"
   batch_size: 1024
   num_workers: 4
   bin_resolution: 0.25
@@ -17,6 +17,8 @@ data:
   considered_atoms: ["C", "H", "O", "N", "S", "Cl", "Br", "F", "P", "I", "K", "Si", "Na", "Sn"]
   n_frag_candidates: 5
   chemberta_model: "/data/rbg/users/klingmin/projects/ML_MS_analysis/pretrained_models/ChemBERTa-zinc-base-v1"
+
+checkpoint: None
 
 model:
   name: "MS_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
@@ -39,7 +41,7 @@ model:
 
   MS_encoder:
     n_heads: 8
-    n_layers: 6
+    n_layers: 8
     model_dim: 512
     hidden_dim: 2048
     dropout_rate: 0.3

@@ -192,22 +192,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Manually add in (hack)
-    folder = "./best_models/massspecgym_sieved"
+    folder = "./best_models/nist2023_LS"
     all_folders = []
     
-    # for FP in os.listdir(folder):
-    #     FP_folder = os.path.join(folder, FP)
-    #     for dataset in os.listdir(FP_folder):
-    #         dataset_folder = os.path.join(FP_folder, dataset)
-    #         for checkpoint in os.listdir(dataset_folder):
-                
-    #             all_folders.append(os.path.join(dataset_folder, checkpoint))
-
     # for split in os.listdir(folder):
     #     split_folder = os.path.join(folder, split)
     for checkpoint in os.listdir(folder):
         all_folders.append(os.path.join(folder, checkpoint))
-
 
     for f in all_folders:
 

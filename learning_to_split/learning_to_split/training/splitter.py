@@ -38,22 +38,13 @@ def jaccard_dist(FP_pred: torch.Tensor, FP: torch.Tensor, threshold:float = 0.5)
 
     return jaccard_dist
 
-@torch.no_grad()
-def cosine_dist(FP_pred: torch.Tensor, FP: torch.Tensor) -> torch.Tensor:
-
-    cos = nn.CosineSimilarity(dim=1, eps=1e-6)
-    similarity = (cos(FP_pred, FP) + 1) / 2 #[-1,1]
-    distance = 1.0 - similarity 
-
-    return distance
-
 def compute_gap_loss(mask, FP_pred:torch.Tensor, FP: torch.Tensor, 
                      threshold: float = 0.5,
-                     jaccard_threshold: float = 0.85) -> torch.Tensor: 
+                     jaccard_threshold: float = 0.75) -> torch.Tensor: 
 
     dist = jaccard_dist(FP_pred, FP, threshold)
-    quant = torch.quantile(dist, 0.8)
-    score = (dist <= min(jaccard_threshold, quant)).long() # 1: train, 0: test. 
+    print("dist", dist)
+    score = (dist <= jaccard_threshold).long() # 1: train, 0: test
 
     loss_gap = F.cross_entropy(mask, score) # Move the mistake to the test 
 

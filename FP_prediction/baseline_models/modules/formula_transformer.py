@@ -289,13 +289,15 @@ class FormulaTransformerEncoderSplitter(pl.LightningModule):
                        input_dim: int = 1000,
                        model_dim: int = 256,
                        hidden_dim: int = 4096,
+                       FP_dim: int = 4096,
                        dropout_rate: float = 0.2,
                        include_adduct: bool = False,
                        include_CE: bool = False, 
                        include_instrument: bool = False,
                        n_adducts: int = 10, 
                        n_CEs: int = 10,
-                       n_instruments: int = 10):
+                       n_instruments: int = 10,
+                       jaccard_threshold: float = 0.75):
 
         super().__init__()
 
@@ -310,8 +312,9 @@ class FormulaTransformerEncoderSplitter(pl.LightningModule):
         self.w_gap = w_gap 
         self.w_ratio = w_ratio 
         self.w_balance = w_balance
-        self.total = w_gap + w_ratio + w_balance
+        self.total = w_gap + w_ratio #+ w_balance
         self.tar_ratio = tar_ratio
+        self.jaccard_threshold = jaccard_threshold 
         self.lr = lr
         self.weight_decay = weight_decay
 
@@ -342,9 +345,20 @@ class FormulaTransformerEncoderSplitter(pl.LightningModule):
                                                nn.GELU(),
                                                nn.Dropout(dropout_rate),
                                                nn.Linear(hidden_dim, model_dim))
+        
+        # Get the FP encoder 
+        self.FP_encoder = nn.Sequential(nn.Linear(FP_dim, hidden_dim),
+                                       nn.GELU(),
+                                       nn.Linear(hidden_dim, model_dim),
+                                       nn.Dropout(dropout_rate))
+        
+        # Get the merger layer 
+        # Merge binned_ms_emb, MS_emb, FP_emb
+        self.merge_layer = nn.Sequential(nn.Linear(model_dim * 3, hidden_dim),
+                                         nn.GELU(),
+                                         nn.Linear(hidden_dim, model_dim))
         # Get the prediction layer 
-        mul = 2
-        self.pred_layer = nn.Sequential(nn.Linear(model_dim * mul, hidden_dim),
+        self.pred_layer = nn.Sequential(nn.Linear(model_dim, hidden_dim),
                                         nn.GELU(),
                                         nn.Linear(hidden_dim, 2))
 
@@ -361,6 +375,7 @@ class FormulaTransformerEncoderSplitter(pl.LightningModule):
     def _get_FP(self, batch):
 
         FP_pred = self.predictor.encode_spectra(batch)
+
         return FP_pred
 
     def encode_spectra(self, batch):
@@ -368,6 +383,7 @@ class FormulaTransformerEncoderSplitter(pl.LightningModule):
         # Get the inputs and move to the device
         intensities, formula, mask = batch["intensities"], batch["formula"], batch["mask"]
         binned_ms = batch["binned_MS"]
+        FP = batch["FP"]
 
         adduct, CE, instrument = None, None, None
         if self.include_adduct: adduct = batch["adduct"]
@@ -390,8 +406,9 @@ class FormulaTransformerEncoderSplitter(pl.LightningModule):
         MS_emb = self.MS_encoder(peaks_emb, src_key_padding_mask = mask)
         MS_emb = MS_emb[:, 0, :]
 
-        # Merge the features together
-        feats = torch.concat([MS_emb, emb], dim = -1)
+        # Add in the info of FP 
+        FP_emb = self.FP_encoder(FP)
+        feats = self.merge_layer(torch.concat([MS_emb, emb, FP_emb], dim = -1))
 
         # Get the prediction
         pred = self.pred_layer(feats)
@@ -407,23 +424,23 @@ class FormulaTransformerEncoderSplitter(pl.LightningModule):
         
         # Get the gap loss 
         FP_pred = self._get_FP(batch)
-        gap_loss = compute_gap_loss(pred, FP_pred, FP)
+        gap_loss = compute_gap_loss(pred, FP_pred, FP, jaccard_threshold = self.jaccard_threshold)
 
         # Get the balance loss
-        balance_loss = compute_y_given_z_loss(pred, FP)
+        # balance_loss = compute_y_given_z_loss(pred, FP)
 
         # Get the ratio loss 
         ratio_loss, _ = compute_marginal_z_loss(pred, tar_ratio = self.tar_ratio)
 
         # Get the total loss 
-        loss = (self.w_gap * gap_loss + self.w_balance * balance_loss + self.w_ratio * ratio_loss) / self.total 
+        loss = (self.w_gap * gap_loss + self.w_ratio * ratio_loss) / self.total 
 
         self.log("splitter/gap_loss", gap_loss, prog_bar = True, sync_dist = True, on_epoch = True)
-        self.log("splitter/balance_loss", balance_loss, prog_bar = True, sync_dist = True, on_epoch = True)
+        # self.log("splitter/balance_loss", balance_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("splitter/ratio_loss", ratio_loss, prog_bar = True, sync_dist = True, on_epoch = True)
         self.log("splitter/loss", loss, prog_bar = True, sync_dist = True, on_epoch = True)
 
-        return {"gap_loss": gap_loss, "balance_loss": balance_loss, "ratio_loss": ratio_loss, "loss": loss}
+        return {"gap_loss": gap_loss, "ratio_loss": ratio_loss, "loss": loss}
 
     def get_output(self, batch):
 

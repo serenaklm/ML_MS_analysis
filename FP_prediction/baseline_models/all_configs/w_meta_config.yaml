@@ -5,7 +5,7 @@ data:
   dataset: "nist2023"
   data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data/"
   splits_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_splits/"
-  split_file: "random.json"
+  split_file: "LS_sieved.json"
   batch_size: 1024
   num_workers: 4
   bin_resolution: 0.25
@@ -18,10 +18,10 @@ data:
   n_frag_candidates: 5
   chemberta_model: "/data/rbg/users/klingmin/projects/ML_MS_analysis/pretrained_models/ChemBERTa-zinc-base-v1"
 
-checkpoint: "/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_prediction/baseline_models/results/formula_encoder/NIST2023_formula_meta_4096_random/epoch=015-val_FP_loss=0.04702.ckpt"
+# checkpoint: "/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_prediction/baseline_models/best_models/nist2023/NIST2023_binned_meta_4096_random/epoch=025-val_FP_loss=0.04794.ckpt"
 
 model:
-  name: "formula_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
+  name: "binned_MS_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
 
   feats_params: 
     include_adduct: True
@@ -54,7 +54,7 @@ trainer:
   gradient_clip_val: 1.0
   
 callbacks:
-  patience: 20 
+  patience: 50
   monitor: "val_FP_loss"
 
 

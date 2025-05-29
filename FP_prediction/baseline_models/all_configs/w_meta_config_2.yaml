@@ -1,0 +1,60 @@
+project: FP_baselines_w_meta_emb
+seed: 37
+
+data:
+  dataset: "nist2023"
+  data_folder: "/data/rbg/users/klingmin/projects/MS_processing/data/"
+  splits_folder: "/data/rbg/users/klingmin/projects/MS_processing/data_splits/"
+  split_file: "LS_sieved.json"
+  batch_size: 1024
+  num_workers: 4
+  bin_resolution: 0.25
+  max_da: 2000
+  max_MS_peaks: 30
+  FP_type: "morgan4_4096"
+  intensity_type: "raw"
+  intensity_threshold: 5.0
+  considered_atoms: ["C", "H", "O", "N", "S", "Cl", "Br", "F", "P", "I", "K", "Si", "Na", "Sn"]
+  n_frag_candidates: 5
+  chemberta_model: "/data/rbg/users/klingmin/projects/ML_MS_analysis/pretrained_models/ChemBERTa-zinc-base-v1"
+
+# checkpoint: "/data/rbg/users/klingmin/projects/ML_MS_analysis/FP_prediction/baseline_models/best_models/nist2023/NIST2023_binned_meta_4096_random/epoch=025-val_FP_loss=0.04794.ckpt"
+
+model:
+  name: "MS_encoder" # Choices are: binned_MS_encoder, MS_encoder, formula_encoder
+
+  feats_params: 
+    include_adduct: True
+    include_CE: False
+    include_instrument: True 
+
+  train_params:
+    lr: 0.00075
+    weight_decay: 0.0000001
+    pos_weight: 5.0
+    reconstruction_weight: 0.001
+
+  binned_MS_encoder:
+    model_dim: 512
+    hidden_dim: 2048
+    dropout_rate: 0.30
+      
+  MS_encoder:
+    n_heads: 8
+    n_layers: 8
+    model_dim: 512
+    hidden_dim: 2048
+    dropout_rate: 0.30
+
+trainer:
+  max_epochs: 250
+  devices: 2
+  accelerator: "gpu"
+  log_every_n_steps: 5
+  gradient_clip_val: 1.0
+  
+callbacks:
+  patience: 50
+  monitor: "val_FP_loss"
+
+
