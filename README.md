@@ -1,15 +1,5 @@
-# Understanding modelling limitations of LC-MS/MS data
+# Why Does Machine Learning Fail for Small-Molecule Mass Spectrometry?
 
-1. Understanding the inputs to the model
-The key analysis for this task is to understand what is the best representation that we can use for the MS. Some ideas include:
+This repository accompanies our study on the limitations of current machine learning approaches for small-molecule mass spectrometry. 
 
-a. Binned
-b. chemical formula 
-c. structure
-
-2. Understanding what is a difficult task 
-a. Maybe if we predict things where the fragment is directly explainable by the peaks, it's easier 
-
-
-## Folder organization 
--   data_splits
+We systematically investigate why modern ML models, despite strong performance on benchmark datasets, often fail to outperform simple baselines such as nearest neighbour. 
